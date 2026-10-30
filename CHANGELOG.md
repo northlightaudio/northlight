@@ -13,6 +13,8 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- An edit button on each mixer strip's name cap opens that channel in the
+  Editor panel.
 - MIDI effects: a MIDI track can run its notes through MIDI effects before they
   reach its instrument (and its MIDI output). Twelve come built in: Arpeggiator,
   Chord, Chord Pads (the white keys play the chords of the project's key, voice-led),

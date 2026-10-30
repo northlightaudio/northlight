@@ -76,6 +76,9 @@ scale and a second column for sends):
 
 - Name cap: track colour at 55% with the 4 px full-colour stripe on the left; name in
   `label` `textPrimary`, truncated; double-click renames; click selects the track.
+  At its right end an edit button (the Editor panel's plug icon, `iconSmall` in
+  `textPrimary`, a square the cap's height, the group number left of it) selects
+  the channel and shows it in the Editor panel. The master's cap has none.
 - Insert slot: `surface2`, 20 px, name in `small`, format badge right (VST3/CLAP) in
   `caption`; bypassed: name `textTertiary` with a strike; power icon on hover at the
   left; drag handle on hover at the right; dragging reorders with a 2 px `accent`

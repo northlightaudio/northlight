@@ -141,3 +141,51 @@ TEST_CASE("The master strip lists the master's inserts and follows their changes
     collectMasterTooltips(mixer, tips);
     CHECK(std::count(tips.begin(), tips.end(), juce::String("Glue Compressor")) == 0);
 }
+
+namespace
+{
+// The showing buttons under `parent` whose accessible title is `title`.
+void findButtons(juce::Component& parent, const juce::String& title, std::vector<juce::Button*>& out)
+{
+    for (auto* child : parent.getChildren())
+    {
+        if (auto* button = dynamic_cast<juce::Button*>(child);
+            button != nullptr && button->isVisible() && button->getTitle() == title)
+            out.push_back(button);
+        findButtons(*child, title, out);
+    }
+}
+} // namespace
+
+TEST_CASE("A strip's edit button shows its channel in the Editor panel", "[ui][mixer]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    core::Project project;
+    core::Track a, b;
+    a.name = "Drums";
+    b.name = "Vox";
+    core::AddTrack addA(a), addB(b);
+    addA.apply(project);
+    addB.apply(project);
+
+    rt::MeterBlock meters;
+    ui::MeterReadings readings(meters);
+    ui::MixerView mixer(readings, nullptr, nullptr);
+    std::vector<core::Id> shown;
+    mixer.onShowStrip = [&shown](core::Id id) { shown.push_back(id); };
+    mixer.setBounds(0, 0, 1200, 700);
+    mixer.setProject(&project);
+
+    std::vector<juce::Button*> vox;
+    findButtons(mixer, "Edit Vox in the Editor panel", vox);
+    REQUIRE(vox.size() == 1);
+    REQUIRE(vox.front()->onClick);
+    vox.front()->onClick();
+    REQUIRE(shown.size() == 1);
+    CHECK(shown.front() == addB.trackId());
+
+    // The master has no edit button of its own.
+    std::vector<juce::Button*> master;
+    findButtons(mixer, "Edit Master in the Editor panel", master);
+    CHECK(master.empty());
+}

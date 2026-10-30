@@ -78,12 +78,22 @@ juce::String panText(double v)
 }
 
 // The name cap at the top of a strip: the colour stripe, the name (double-click
-// renames), the group bar; a click selects the channel.
+// renames), the group bar; a click selects the channel. The edit button at its
+// right end shows the channel in the Editor panel (screens/mixer.md).
 class NameCap final : public juce::Component
 {
 public:
-    explicit NameCap(const Theme& theme) : theme_(theme)
+    explicit NameCap(const Theme& theme)
+        : theme_(theme), edit_(theme, Icon::plugin, "Edit this channel in the Editor panel")
     {
+        edit_.setIconSize(theme_.sizes.iconSmall);
+        edit_.setRestColour(theme_.colours.textPrimary); // on the track colour, as the name
+        edit_.onClick = [this]
+        {
+            if (onEdit)
+                onEdit();
+        };
+        addChildComponent(edit_);
         name_.setFont(theme_.label());
         name_.setColour(juce::Label::textColourId, theme_.colours.textPrimary);
         name_.setJustificationType(juce::Justification::centredLeft);
@@ -102,7 +112,18 @@ public:
         addAndMakeVisible(name_);
     }
     std::function<void(const juce::String&)> onRenamed;
-    std::function<void()> onClicked, onMenu;
+    std::function<void()> onClicked, onMenu, onEdit;
+
+    // The edit button shows (the master has no Editor panel view of its own).
+    void setEditable(bool editable)
+    {
+        if (editable == edit_.isVisible())
+            return;
+        edit_.setVisible(editable);
+        resized();
+        repaint();
+    }
+    void setEditTitle(const juce::String& title) { edit_.setTitle(title); }
 
     void
     set(const juce::String& name, juce::Colour colour, bool selected, int group, juce::Colour groupColour)
@@ -110,8 +131,11 @@ public:
         name_.setText(name, juce::dontSendNotification);
         colour_ = colour;
         selected_ = selected;
+        const bool relayout = (group > 0) != (group_ > 0);
         group_ = group;
         groupColour_ = groupColour;
+        if (relayout)
+            resized();
         repaint();
     }
     void paint(juce::Graphics& g) override
@@ -128,15 +152,17 @@ public:
             g.fillRect(bar);
             g.setFont(theme_.caption());
             g.drawText(juce::String(group_),
-                       getLocalBounds().removeFromRight(14),
+                       getLocalBounds().withTrimmedRight(editWidth()).removeFromRight(14),
                        juce::Justification::centredRight);
         }
         juce::ignoreUnused(c);
     }
     void resized() override
     {
-        name_.setBounds(getLocalBounds()
-                            .withTrimmedLeft(theme_.track.headerStripeWidth + theme_.spacing.xs)
+        auto area = getLocalBounds();
+        if (edit_.isVisible())
+            edit_.setBounds(area.removeFromRight(editWidth()));
+        name_.setBounds(area.withTrimmedLeft(theme_.track.headerStripeWidth + theme_.spacing.xs)
                             .withTrimmedRight(group_ > 0 ? 14 : 2));
     }
     void mouseDown(const juce::MouseEvent& e) override
@@ -193,8 +219,11 @@ public:
     }
 
 private:
+    int editWidth() const noexcept { return edit_.isVisible() ? getHeight() : 0; }
+
     const Theme& theme_;
     juce::Label name_;
+    IconButton edit_;
     juce::Colour colour_, groupColour_;
     bool selected_ = false;
     int group_ = 0;

@@ -82,6 +82,13 @@ public:
                 owner_.onSelectChannel(id_);
         };
         cap_.onMenu = [this] { showGroupMenu(); };
+        // The cap's edit button: this channel in the Editor panel.
+        cap_.onEdit = [this]
+        {
+            if (owner_.onShowStrip)
+                owner_.onShowStrip(id_);
+        };
+        cap_.setEditable(true);
         addAndMakeVisible(cap_);
 
         input_.setTooltip("Input");
@@ -340,6 +347,7 @@ public:
         // The strip is a group named for its channel, and each control names it
         // too ("Mute Bass", not "M"): accessibility-performance.md 11.3.
         setTitle(stripName);
+        cap_.setEditTitle("Edit " + stripName + " in the Editor panel");
         titleForTrack(mute_, "Mute", stripName);
         titleForTrack(solo_, "Solo", stripName);
         titleForTrack(arm_, "Arm", stripName);
