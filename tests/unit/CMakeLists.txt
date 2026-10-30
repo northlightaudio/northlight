@@ -1,5 +1,6 @@
 add_executable(northlight_unit_tests
     NoAssertDialogs.cpp
+    StackReport.cpp
     version/VersionTests.cpp
     rt/RealtimeGuardTests.cpp
     audio/AudioSettingsTests.cpp
@@ -104,4 +105,6 @@ northlight_precompile(northlight_unit_tests CATCH2)
 target_include_directories(northlight_unit_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../support")
 
 include(Catch)
-catch_discover_tests(northlight_unit_tests)
+# Tags become CTest labels, so a run can pick tests by tag: CI runs the [paced]
+# tests on their own (docs/building.md, "Tests").
+catch_discover_tests(northlight_unit_tests ADD_TAGS_AS_LABELS)

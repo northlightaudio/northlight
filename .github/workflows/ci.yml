@@ -58,6 +58,7 @@ jobs:
         run: cmake --preset ci -DNORTHLIGHT_PCH=OFF -DNORTHLIGHT_COMPILER_CACHE=ON
 
       - name: Build
+        id: build
         run: cmake --build --preset ci --parallel
 
       - name: Compiler cache statistics
@@ -79,7 +80,13 @@ jobs:
           key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Test
-        run: ctest --preset ci
+        run: ctest --preset ci --label-exclude paced
+
+      # Tests that run in real time need a free core when they wake, which a busy
+      # four-core runner cannot promise, so they run one at a time after the rest.
+      - name: Test (paced, one at a time)
+        if: always() && steps.build.outcome == 'success'
+        run: ctest --preset ci --label-regex paced --parallel 1
 
       - name: Check formatting
         if: always()

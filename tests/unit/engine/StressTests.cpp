@@ -155,8 +155,9 @@ public:
 };
 } // namespace
 
+// [paced]: reads in real time, so CI runs it on its own (docs/building.md, "Tests").
 TEST_CASE("Two clips of one streamed file get their own windows and play without underruns",
-          "[engine][stream][stress]")
+          "[engine][stream][stress][paced]")
 {
     StreamingLoader loader;
     engine::MediaCache media(loader);

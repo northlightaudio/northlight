@@ -3,6 +3,7 @@
 # stay JUCE-free and fast to link.
 add_executable(northlight_juce_tests
     ../unit/NoAssertDialogs.cpp
+    ../unit/StackReport.cpp
     JuceStreamReaderTests.cpp
     PeakStoreTests.cpp
     AudioCallbackTests.cpp

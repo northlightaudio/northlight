@@ -251,6 +251,25 @@ paint-time budgets, says so with `RUN_SERIAL`). The suites can also be run direc
 - `build/windows-debug/tests/unit_juce/northlight_juce_tests.exe`: JUCE-linked
   code, still without a device.
 
+**When a test hangs or crashes,** it says where. Both suites include
+`tests/unit/StackReport.cpp`, which prints the test case's name and the stack of
+every thread, with file and line, then ends the process with a failure. It does
+this when a test case crashes, calls `abort()` (as a failed real-time check does),
+or is still running after 240 seconds (`NORTHLIGHT_TEST_HANG_SECONDS` changes the
+limit; 0 turns it off). It also turns off Windows' error dialogs and its error
+reporting for the suites, so a failing test never waits on either. CTest shows the
+report as the test's output.
+
+**Paced tests.** A test that runs in real time, and so needs a free core when it
+wakes, carries the `[paced]` tag; the unit suite's tags are CTest labels. On a busy
+machine such a test can fail for want of a core, so CI runs the other tests in
+parallel and then the paced ones one at a time:
+
+```powershell
+ctest --preset ci --label-exclude paced
+ctest --preset ci --label-regex paced --parallel 1
+```
+
 The UI performance budgets ([ui-performance.md](ui-performance.md)) are in three
 layers: the work budgets run with every `ctest`; the paint-time budgets are a
 Release-only test labelled `perf`; the frame benchmarks run in a window against this

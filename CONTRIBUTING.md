@@ -113,6 +113,9 @@ system lacks is added there before it is built. The
   the function under test.
 - Tests are deterministic and never depend on audio hardware. Tools that need a
   device live in `tests/hardware/` and are run by hand.
+- A test that runs in real time and checks it kept up (no underruns at a real pace)
+  gets the `[paced]` tag, so CI runs it on its own
+  ([docs/building.md](docs/building.md#tests)).
 - A new command gets an apply, undo and redo test; the model's round-trip test covers
   it once it is in the project file.
 

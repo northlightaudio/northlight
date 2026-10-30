@@ -232,8 +232,10 @@ TEST_CASE("Reads straddling the file edges zero-fill without counting underruns"
     CHECK(source.underruns() == 0);
 }
 
+// [paced]: reads in real time and needs the disk thread to get a core when it wakes,
+// so CI runs it on its own (docs/building.md, "Tests").
 TEST_CASE("The disk thread keeps a paced reader fed with no underruns after the first fill",
-          "[engine][stream]")
+          "[engine][stream][paced]")
 {
     auto reader = std::make_unique<RampReader>(48000 * 20, 2);
     auto* rawReader = reader.get();
