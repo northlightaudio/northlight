@@ -13,7 +13,12 @@ jobs:
   windows:
     name: Windows x64 (MSVC)
     runs-on: windows-latest
-    timeout-minutes: 60
+    # A build with an empty compiler cache takes about 45 minutes; with a warm one,
+    # far less (docs/building.md, "Build speed").
+    timeout-minutes: 90
+    env:
+      SCCACHE_DIR: ${{ github.workspace }}/.sccache
+      SCCACHE_CACHE_SIZE: 4G
 
     steps:
       - uses: actions/checkout@v4
@@ -23,22 +28,61 @@ jobs:
         with:
           arch: x64
 
-      - name: Cache fetched dependencies
-        uses: actions/cache@v4
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: v0.18.0
+
+      # Restored and saved as separate steps so they are saved even when a test
+      # fails: actions/cache on its own saves only when the whole job succeeds.
+      - name: Restore fetched dependencies
+        id: deps
+        uses: actions/cache/restore@v4
         with:
           path: build/ci/_deps
           key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
 
+      # Each run saves a new entry and starts from the newest one; GitHub evicts
+      # the oldest when the repository's caches pass their size limit.
+      - name: Restore compiler cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .sccache
+          key: sccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: sccache-${{ runner.os }}-
+
+      # Precompiled headers off: sccache cannot cache a compile that uses one, and
+      # a build without them also catches a missing include.
       - name: Configure
-        run: cmake --preset ci
+        id: configure
+        run: cmake --preset ci -DNORTHLIGHT_PCH=OFF -DNORTHLIGHT_COMPILER_CACHE=ON
 
       - name: Build
         run: cmake --build --preset ci --parallel
+
+      - name: Compiler cache statistics
+        if: always() && steps.configure.outcome == 'success'
+        run: sccache --stop-server
+
+      - name: Save compiler cache
+        if: always() && steps.configure.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: .sccache
+          key: sccache-${{ runner.os }}-${{ github.sha }}
+
+      - name: Save fetched dependencies
+        if: always() && steps.configure.outcome == 'success' && steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build/ci/_deps
+          key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Test
         run: ctest --preset ci
 
       - name: Check formatting
+        if: always()
         shell: pwsh
         run: |
           $files = git ls-files -- '*.cpp' '*.h'

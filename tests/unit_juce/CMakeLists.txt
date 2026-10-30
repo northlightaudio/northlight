@@ -89,6 +89,7 @@ target_link_libraries(northlight_juce_tests PRIVATE
     northlight_ui
     northlight_juce
     Catch2::Catch2WithMain)
+northlight_precompile(northlight_juce_tests JUCE CATCH2)
 
 # A scanner stand-in that crashes, hangs or talks nonsense on request (mode from
 # the environment), driven through PluginScanner::inspect with its path.

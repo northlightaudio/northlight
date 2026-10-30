@@ -98,6 +98,7 @@ target_link_libraries(northlight_unit_tests PRIVATE
     northlight_hosting_core
     northlight_ui_edit
     Catch2::Catch2WithMain)
+northlight_precompile(northlight_unit_tests CATCH2)
 
 # Test material shared by the test targets (tests/support).
 target_include_directories(northlight_unit_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../support")

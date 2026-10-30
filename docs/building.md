@@ -111,6 +111,45 @@ What is missing on Linux:
 | `NORTHLIGHT_ASIO` | ON | ASIO audio devices (Windows only) |
 | `NORTHLIGHT_ASIO_SDK_DIR` | empty | Optional: an ASIO SDK root whose header replaces the one bundled with JUCE |
 | `NORTHLIGHT_VERSION_LABEL` | `dev` | The version's label: `dev`, a pre-release such as `beta.1`, or empty for a release (see [CONTRIBUTING.md](../CONTRIBUTING.md#versions-and-releases)) |
+| `NORTHLIGHT_PCH` | ON (OFF in CI) | Precompile the standard, JUCE and Catch2 headers (see [Build speed](#build-speed)) |
+| `NORTHLIGHT_COMPILER_CACHE` | OFF (ON in CI) | Compile through sccache, which must be on PATH (see [Build speed](#build-speed)) |
+
+## Build speed
+
+Most of a build's time is spent parsing the same large headers again in every file:
+JUCE in the UI, app, device and hosting code, and Catch2 in the tests. Two things
+cut it.
+
+**Precompiled headers** (`NORTHLIGHT_PCH`, on by default). The targets that include
+JUCE or Catch2 each compile those headers once, and every file in the target starts
+from the result. The set is in `cmake/NorthlightPrecompiled.cmake`: standard, JUCE
+and Catch2 headers only, never the project's own, so editing a project header still
+rebuilds only the files that include it. The JUCE-free libraries (`src/core`,
+`src/engine`, `src/plugins`) and `tests/unit` never get the JUCE set. The headers are
+force-included, so a file that forgets an include still compiles locally; the CI
+build, which has them off, catches it.
+
+**A compiler cache** (`NORTHLIGHT_COMPILER_CACHE`, for CI). Every CI run starts from
+an empty build folder, so without a cache it compiles everything, about 45 minutes on
+GitHub's four-core runner. With the option on, every compile goes through
+[sccache](https://github.com/mozilla/sccache), and the workflow keeps sccache's
+folder between runs with `actions/cache`, so a run recompiles only the files whose
+code or headers changed. sccache cannot cache a compile that uses a precompiled
+header, so CI turns `NORTHLIGHT_PCH` off; and it caches an MSVC compile only when
+the debug information is inside the object file, so the option switches it from a
+shared PDB (`/Zi`) to `/Z7`.
+
+Measured on a 16-core PC in October 2026, a full `ci` build took 256 s; 177 s with
+precompiled headers; and 57 s from an empty build folder with a warm compiler cache
+(99.6% of compiles were cache hits; the cache was 354 MB). Filling an empty cache
+adds about 10%.
+
+To try the CI configuration locally, put sccache on PATH and configure with both
+options:
+
+```powershell
+cmake --preset ci -DNORTHLIGHT_PCH=OFF -DNORTHLIGHT_COMPILER_CACHE=ON
+```
 
 ## Packaging
 

@@ -251,3 +251,4 @@ add_library(northlight_ui STATIC
 target_include_directories(northlight_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_include_directories(northlight_ui PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 target_link_libraries(northlight_ui PUBLIC northlight_ui_edit northlight_core northlight_plugins northlight_hosting northlight_audio_device northlight_juce)
+northlight_precompile(northlight_ui JUCE)

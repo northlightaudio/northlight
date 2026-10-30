@@ -30,3 +30,4 @@ add_library(northlight_audio_device STATIC
     PeakStore.cpp)
 
 target_link_libraries(northlight_audio_device PUBLIC northlight_audio northlight_engine northlight_juce)
+northlight_precompile(northlight_audio_device JUCE)

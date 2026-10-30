@@ -32,6 +32,7 @@ target_include_directories(northlight_hosting PUBLIC "${CMAKE_CURRENT_SOURCE_DIR
 target_link_libraries(northlight_hosting
     PUBLIC northlight_hosting_core northlight_engine northlight_plugins northlight_juce clap
     PRIVATE northlight_version)
+northlight_precompile(northlight_hosting JUCE)
 
 # The scanner: one plugin file per process, descriptions out as XML. Copied next
 # to the app and the JUCE tests so they find it beside themselves.

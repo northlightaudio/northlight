@@ -56,6 +56,9 @@ environment:
 
 - Presets: `windows-debug` (real-time checks on), `windows-relwithdebinfo`,
   `windows-release`, `ci`. Output goes to `build/<preset>/`.
+- Local builds use precompiled headers, which are force-included; CI builds without
+  them (it uses sccache instead), so a missing `#include` fails only there. Configure
+  with `-DNORTHLIGHT_PCH=OFF` to check (docs/building.md, "Build speed").
 - The executable is `build/<preset>/src/app/northlight_artefacts/<config>/Northlight.exe`.
 - Test binaries: `build/<preset>/tests/unit/northlight_unit_tests.exe` and
   `build/<preset>/tests/unit_juce/northlight_juce_tests.exe`; both accept Catch2

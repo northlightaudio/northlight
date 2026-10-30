@@ -61,6 +61,7 @@ target_link_libraries(northlight_app_session PUBLIC
     northlight_audio_device
     northlight_ui # AppMenus prints keys from the keyboard map (ui/Shortcuts.h)
     northlight_juce)
+northlight_precompile(northlight_app_session JUCE)
 
 # The scanner lives beside the app so the app finds it.
 add_custom_command(TARGET northlight POST_BUILD
@@ -107,3 +108,4 @@ target_link_libraries(northlight PRIVATE
     northlight_app_session
     northlight_ui
     northlight_version)
+northlight_precompile(northlight JUCE)

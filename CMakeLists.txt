@@ -41,6 +41,24 @@ set(NORTHLIGHT_VERSION_LABEL "dev" CACHE STRING "Version label: dev, a pre-relea
 option(NORTHLIGHT_ASIO "Enable ASIO audio devices (Windows only)" ON)
 set(NORTHLIGHT_ASIO_SDK_DIR "" CACHE PATH "Optional: an ASIO SDK root whose header replaces the one bundled with JUCE")
 
+# Build speed (docs/building.md, "Build speed"). Precompiled headers are on by
+# default. The compiler cache is for CI: sccache cannot cache a compile that uses a
+# precompiled header, so the ci workflow turns the headers off and the cache on.
+option(NORTHLIGHT_PCH "Precompile the standard, JUCE and Catch2 headers" ON)
+option(NORTHLIGHT_COMPILER_CACHE "Compile through sccache (needs sccache on PATH)" OFF)
+include(NorthlightPrecompiled)
+
+if(NORTHLIGHT_COMPILER_CACHE)
+    find_program(NORTHLIGHT_SCCACHE sccache REQUIRED)
+    # Set before the dependencies are fetched, so JUCE and Catch2 are cached too.
+    set(CMAKE_C_COMPILER_LAUNCHER "${NORTHLIGHT_SCCACHE}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${NORTHLIGHT_SCCACHE}")
+    # sccache caches an MSVC compile only when its debug information is inside the
+    # object file (/Z7), not in a PDB that every compile of a target shares (/Zi).
+    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
+    message(STATUS "Northlight: compiling through ${NORTHLIGHT_SCCACHE}")
+endif()
+
 # ---------------------------------------------------------------------------
 # Dependencies
 # ---------------------------------------------------------------------------
