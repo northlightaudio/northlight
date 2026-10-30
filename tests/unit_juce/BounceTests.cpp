@@ -293,7 +293,7 @@ TEST_CASE("The demo song bounces to a full, unclipped mix with every section sou
         for (float v : ch)
             peak = std::max(peak, std::abs(v));
     CHECK(peak < 1.0f);
-    // Each section (intro, verse, chorus, bridge, last chorus, outro) is audible.
+    // Each section (intro, loop, changes, breakdown, reprise, outro) is audible.
     const auto rmsOfBars = [&](int from, int to)
     {
         double sum = 0.0;
@@ -314,7 +314,7 @@ TEST_CASE("The demo song bounces to a full, unclipped mix with every section sou
         INFO("bars " << from << " to " << to);
         CHECK(rmsOfBars(from, to) > 0.01);
     }
-    // The choruses are louder than the intro.
+    // The changes, with the drums and the melody, are louder than the intro.
     CHECK(rmsOfBars(12, 20) > rmsOfBars(1, 4));
     if (kept.isEmpty())
         out.deleteFile();
