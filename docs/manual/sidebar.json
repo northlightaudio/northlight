@@ -1,0 +1,50 @@
+[
+	{
+		"label": "Getting started",
+		"directory": "getting-started"
+	},
+	{
+		"label": "Projects and files",
+		"directory": "projects"
+	},
+	{
+		"label": "Arranging and editing",
+		"directory": "editing"
+	},
+	{
+		"label": "Recording",
+		"directory": "recording"
+	},
+	{
+		"label": "MIDI",
+		"directory": "midi"
+	},
+	{
+		"label": "Vocal pitch editing",
+		"directory": "pitch"
+	},
+	{
+		"label": "Mixing",
+		"directory": "mixing"
+	},
+	{
+		"label": "Automation",
+		"directory": "automation"
+	},
+	{
+		"label": "Instruments",
+		"directory": "instruments"
+	},
+	{
+		"label": "Effects",
+		"directory": "effects"
+	},
+	{
+		"label": "Exporting",
+		"directory": "exporting"
+	},
+	{
+		"label": "Reference",
+		"directory": "reference"
+	}
+]
