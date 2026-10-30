@@ -99,6 +99,9 @@ public:
     // rebuild.
     std::uint64_t starvations() const noexcept { return starvations_.load(std::memory_order_relaxed); }
     bool hadReadError() const noexcept { return readError_.load(std::memory_order_relaxed); }
+    // Whether the window has been filled to the read-ahead since the last rebuild:
+    // only then does running off its end count as a starvation.
+    bool caughtUp() const noexcept { return caughtUp_.load(std::memory_order_acquire); }
 
     // Window currently valid for reads, for tests and diagnostics.
     std::int64_t windowStart() const noexcept { return validStart_.load(std::memory_order_acquire); }

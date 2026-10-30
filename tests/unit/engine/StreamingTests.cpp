@@ -187,7 +187,11 @@ TEST_CASE("The disk thread's starvation total outlives the source that starved",
     for (int i = 0; i < 500 && source->windowEnd() < 2048; ++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     REQUIRE(source->windowEnd() == 2048);
-    std::this_thread::sleep_for(std::chrono::milliseconds(20)); // a few idle passes: caught up
+    // The disk thread's next pass marks the window caught up; wait for it rather
+    // than a fixed time, which a busy machine can outlast.
+    for (int i = 0; i < 5000 && !source->caughtUp(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    REQUIRE(source->caughtUp());
 
     // Stall the disk, then play off the end of the window.
     gate->open = false;

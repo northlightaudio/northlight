@@ -108,7 +108,12 @@ TEST_CASE("A ring overrun becomes silence in the file so later samples keep thei
     session.capture(in, 1, 512, 1024); // may be dropped depending on drain timing
     session.capture(in, 1, 512, 1536); // and this one
     const auto droppedAfterBurst = session.totalDropped();
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    // Let the writer empty the ring before the late block, however long a busy
+    // machine keeps it from running: a fixed sleep was not always enough on CI.
+    const auto& ring = *session.inputs()[0]->ring;
+    for (int i = 0; i < 5000 && ring.available() > 0; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    REQUIRE(ring.available() == 0);
     std::vector<float> w(512, 0.75f);
     const float* inW[] = {w.data()};
     session.capture(inW, 1, 512, 2048);
