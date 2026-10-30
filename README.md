@@ -1,5 +1,7 @@
 # Northlight
 
+[![CI](https://github.com/northlightaudio/northlight/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/northlightaudio/northlight/actions/workflows/ci.yml)
+
 A digital audio workstation for Windows, built for low-latency recording and careful
 mixing. Native ASIO, VST3 and CLAP hosting, a lock-free multicore engine, and an
 interface designed before it was built. Free software under the GNU AGPLv3.
