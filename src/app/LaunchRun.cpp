@@ -1157,6 +1157,12 @@ const std::vector<LaunchFlag<LaunchRun>>& LaunchRun::flags()
              const int n = a.integer();
              whenSettled(r, [&r, n] { r.window.showEditorGap(n); });
          }},
+        {"--editor-open-plugin",
+         "",
+         0,
+         "press the Editor panel's first \"Open editor\" button (a hosted plugin's card), as a click would, "
+         "once the window has settled",
+         [](LaunchRun& r, Args&) { whenSettled(r, [&r] { r.window.pressEditorOpenButton(); }); }},
         // ----- editors
         {"--piano-roll",
          "",

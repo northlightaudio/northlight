@@ -2569,6 +2569,41 @@ void MainWindow::showEditorGap(int n)
         content->editor_.pointerAt(gaps[static_cast<size_t>(n - 1)]->getBounds().getCentre());
 }
 
+void MainWindow::pressEditorOpenButton(int triesLeft)
+{
+    auto* content = content_;
+    if (content == nullptr)
+        return;
+    // Visible children only (not isShowing: --offscreen puts nothing on screen).
+    std::function<juce::Button*(juce::Component&)> find = [&find](juce::Component& parent) -> juce::Button*
+    {
+        for (auto* child : parent.getChildren())
+        {
+            if (!child->isVisible())
+                continue;
+            if (auto* button = dynamic_cast<juce::Button*>(child);
+                button != nullptr && button->getButtonText() == "Open editor")
+                return button;
+            if (auto* found = find(*child))
+                return found;
+        }
+        return nullptr;
+    };
+    if (auto* button = find(content->editor_))
+        button->triggerClick();
+    else if (triesLeft > 0)
+    {
+        // A hosted plugin's card gets its button once the instance has loaded.
+        juce::Component::SafePointer<MainWindow> safe(this);
+        juce::Timer::callAfterDelay(250,
+                                    [safe, triesLeft]
+                                    {
+                                        if (safe != nullptr)
+                                            safe->pressEditorOpenButton(triesLeft - 1);
+                                    });
+    }
+}
+
 juce::StringArray MainWindow::capture(const juce::File& folder, float scale)
 {
     juce::StringArray saved;

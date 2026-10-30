@@ -116,6 +116,9 @@ public:
     // Shows the Editor panel's nth gap button (1-based) as the pointer in its gap
     // would, for captures (--editor-gap).
     void showEditorGap(int n);
+    // Presses the Editor panel's first "Open editor" button as a click would
+    // (--editor-open-plugin).
+    void pressEditorOpenButton(int triesLeft = 40);
     // The strip drag benchmark (--benchmark-strip-drag).
     void runStripDragBenchmark(int seconds);
     // The hover benchmark (--benchmark-hover).
