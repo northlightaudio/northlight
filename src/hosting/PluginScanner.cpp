@@ -16,7 +16,9 @@ PluginScanner::~PluginScanner()
 
 void PluginScanner::cancel()
 {
-    stopThread(5000);
+    // No time limit, so the thread is never killed (docs/decisions.md): an
+    // inspection in progress ends its child process within 100 ms.
+    stopThread(-1);
 }
 
 juce::File PluginScanner::scannerExecutable()

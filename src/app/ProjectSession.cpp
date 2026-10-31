@@ -1520,7 +1520,7 @@ void ProjectSession::autosaveInBackground()
     autosaveWriting_ = true;
     const double dirtySince = dirtySinceMs_;
     dirtySinceMs_ = 0.0; // an edit from here on is newer than this copy
-    autosaveWriter_.addJob(
+    autosaveWriter_.add(
         [this, job, dirtySince, alive = autosaveAlive_]
         {
             const bool ok = writeAutosave(*job);
@@ -1551,7 +1551,8 @@ void ProjectSession::autosaveInBackground()
 void ProjectSession::waitForAutosave()
 {
     // At most one job, a project's worth of JSON: a short wait.
-    autosaveWriter_.removeAllJobs(false, 10000);
+    autosaveWriter_.dropPending();
+    autosaveWriter_.waitUntilIdle(10000);
 }
 
 void ProjectSession::closeProject()

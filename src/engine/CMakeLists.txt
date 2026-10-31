@@ -32,6 +32,8 @@ target_link_libraries(northlight_rt_checks PUBLIC northlight_rt)
 add_library(northlight_engine STATIC
     AudioSource.h
     AudioSource.cpp
+    BackgroundQueue.h
+    BackgroundQueue.cpp
     Snapshot.h
     Snapshot.cpp
     Transport.h

@@ -20,7 +20,11 @@ PeakStore::~PeakStore()
 {
     signalThreadShouldExit();
     notify();
-    stopThread(5000);
+    // No time limit: JUCE kills a thread that misses it, and a low-priority thread
+    // on a busy machine can wait seconds for a core, even while it starts up and
+    // holds Windows' loader lock (docs/decisions.md). A build stops at its next
+    // progress check.
+    stopThread(-1);
     cancelPendingUpdate();
 }
 

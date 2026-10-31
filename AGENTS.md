@@ -109,6 +109,11 @@ environment:
 - **UI values come from tokens.** Colours, sizes, spacing and fonts come from
   `ui::Theme`, never literals. A new token goes in `docs/design/tokens.json` (with a
   contrast pair if it is text).
+- **Never kill a thread.** Stop a `juce::Thread` with `stopThread(-1)` and make it
+  check `threadShouldExit()` between steps; run background jobs on
+  `engine::BackgroundQueue`, not `juce::ThreadPool`. A killed thread can leave
+  Windows' loader lock held, and the app then hangs on its next DLL load or on
+  quitting. `scripts/check-thread-stops.ps1` (in `ctest`) enforces it.
 - **Errors:** functions that can fail return them (`std::optional`), not throw.
   Exceptions only for truly exceptional failures on non-RT threads.
 - **Naming:** `northlight::` namespaces that mirror `src/`; PascalCase types and

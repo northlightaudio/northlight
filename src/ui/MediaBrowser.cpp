@@ -190,8 +190,9 @@ MediaBrowser::MediaBrowser()
 
 MediaBrowser::~MediaBrowser()
 {
-    generation_->fetch_add(1);
-    pool_.removeAllJobs(true, 4000);
+    generation_->fetch_add(1); // a listing in progress stops at its next file
+    pool_.dropPending();
+    pool_.waitUntilIdle(-1);
 }
 
 std::vector<juce::String> MediaBrowser::folderList() const
@@ -319,7 +320,7 @@ void MediaBrowser::updatePlaceButton()
 void MediaBrowser::startListing()
 {
     const int generation = generation_->fetch_add(1) + 1;
-    pool_.removeAllJobs(false, 0);
+    pool_.dropPending();
     if (!folder_.isDirectory())
     {
         entries_.clear();
@@ -335,7 +336,7 @@ void MediaBrowser::startListing()
     const auto query = search_.getText();
     const auto counter = generation_;
     juce::Component::SafePointer<MediaBrowser> safe(this);
-    pool_.addJob(
+    pool_.add(
         [folder, root, query, counter, generation, safe]
         {
             auto result = list(folder, root, query, [&] { return counter->load() != generation; });

@@ -4,6 +4,9 @@ add_subdirectory(unit)
 if(WIN32)
     add_test(NAME ui_no_literal_colours
              COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_SOURCE_DIR}/scripts/check-ui-tokens.ps1" -Root "${CMAKE_SOURCE_DIR}")
+    # No thread is ever killed (docs/decisions.md).
+    add_test(NAME src_never_kills_a_thread
+             COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_SOURCE_DIR}/scripts/check-thread-stops.ps1" -Root "${CMAKE_SOURCE_DIR}")
 endif()
 add_subdirectory(unit_juce)
 

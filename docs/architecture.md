@@ -86,6 +86,14 @@ MMCSS they fall back to `THREAD_PRIORITY_TIME_CRITICAL`. The disk thread runs at
 `THREAD_PRIORITY_HIGHEST`, above normal work and below the workers. Diagnostics
 shows how many workers joined MMCSS.
 
+No thread is ever killed. Each is told to stop and then waited for, however long
+that takes: a `juce::Thread` with `stopThread(-1)`, and one-at-a-time background jobs
+(the autosave writer, the file browser's listing) on `engine::BackgroundQueue`,
+whose destructor drops what has not started, waits for the running job and joins.
+JUCE's own time limits kill a thread that misses them, and a thread killed while
+it holds a lock leaves it held for ever; `scripts/check-thread-stops.ps1` keeps
+them out ([decisions.md](decisions.md)).
+
 ## Model and commands
 
 `core::Project` is plain data: channels (audio, MIDI, instrument, aux and folder

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/BackgroundQueue.h"
 #include "ui/Icons.h"
 #include "ui/Theme.h"
 #include "ui/components/FocusListBox.h"
@@ -125,7 +126,7 @@ private:
     bool listing_ = false;
     std::unique_ptr<juce::FileChooser> chooser_;
     std::shared_ptr<std::atomic<int>> generation_ = std::make_shared<std::atomic<int>>(0);
-    juce::ThreadPool pool_{1};
+    engine::BackgroundQueue pool_; // last: its destructor waits for a listing that uses the rest
 };
 
 // The browser panel: Plugins and Files as two tabs (a segmented control at the

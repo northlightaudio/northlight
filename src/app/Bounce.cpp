@@ -94,10 +94,11 @@ BounceJob::~BounceJob()
     // thread; it checks this and does nothing once the job is gone.
     // A cancel ends the render within one block and the conversion, measurement
     // or write within a few thousand samples (each checks cancel_), so this waits
-    // for at most one plugin block or chunk; the timeout is only a backstop.
+    // for at most one plugin block or chunk. No time limit: JUCE kills a thread
+    // that misses one, which can leave a lock held for ever (docs/decisions.md).
     alive_->store(false, std::memory_order_release);
     cancel();
-    stopThread(10000);
+    stopThread(-1);
 }
 
 void BounceJob::start()

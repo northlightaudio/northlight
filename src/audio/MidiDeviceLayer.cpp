@@ -112,7 +112,7 @@ void MidiDeviceLayer::shutdown()
     if (!initialised_)
         return;
     if (sender_ != nullptr)
-        sender_->stopThread(1000);
+        sender_->stopThread(-1); // never killed (docs/decisions.md); it checks every millisecond
     sender_.reset();
     connection_ = {};
     std::vector<OpenInput> closing;

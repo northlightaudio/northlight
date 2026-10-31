@@ -11,6 +11,7 @@
 #include "core/Model.h"
 #include "core/TempoMap.h"
 #include "engine/AudioEngine.h"
+#include "engine/BackgroundQueue.h"
 #include "engine/DiskThread.h"
 #include "engine/Stretch.h"
 #include "engine/TempoDetect.h"
@@ -572,7 +573,7 @@ private:
     bool autosaveWriting_ = false;
     std::uint64_t autosaveGeneration_ = 0; // moved on by every removal: a copy written before is stale
     std::shared_ptr<std::atomic<bool>> autosaveAlive_ = std::make_shared<std::atomic<bool>>(true);
-    juce::ThreadPool autosaveWriter_{1};
+    engine::BackgroundQueue autosaveWriter_;
 
     audio::AudioDeviceLayer& audio_;
     engine::DiskThread disk_;

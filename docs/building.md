@@ -274,11 +274,13 @@ PDBs as the `test-programs-<commit>` artifact; download it, then:
 & "<VS>\VC\Tools\MSVC\<version>\bin\Hostx64\x64\llvm-symbolizer.exe" --obj=northlight_juce_tests.exe --relative-address 0x1a2b3c 0x4d5e6f
 ```
 
-**A known hang.** Now and then a JUCE test program hangs after its test has
+**A hang that was fixed.** Now and then a JUCE test program hung after its test had
 finished: `ScopedJuceInitialiser_GUI`'s destructor unloads Direct2D's DLLs, and
-`FreeLibrary` waits for the loader lock for ever. The cause is not yet known; the
-report's loader-lock line is there to find it. Until it is fixed, a release package
-gives a failed test a second run.
+`FreeLibrary` waited for the loader lock for ever. The report's loader-lock line
+showed why: its holder had been killed. JUCE kills a thread that misses
+`stopThread`'s time limit, so no code stops a thread with one any more
+(architecture.md, "Threads"). Until CI has run clean for a while, a release package
+still gives a failed test a second run.
 
 **Paced tests.** A test that runs in real time, and so needs a free core when it
 wakes, carries the `[paced]` tag; the unit suite's tags are CTest labels. On a busy
