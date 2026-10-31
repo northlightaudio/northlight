@@ -273,8 +273,8 @@ PDBs as the `test-programs-<commit>` artifact; download it, then:
 
 **Paced tests.** A test that runs in real time, and so needs a free core when it
 wakes, carries the `[paced]` tag; the unit suite's tags are CTest labels. On a busy
-machine such a test can fail for want of a core, so CI runs the other tests in
-parallel and then the paced ones one at a time:
+machine such a test can fail for want of a core, so CI and `scripts/package.ps1`
+run the other tests in parallel and then the paced ones one at a time:
 
 ```powershell
 ctest --preset ci --label-exclude paced

@@ -162,13 +162,17 @@ if (-not $SkipBuild) {
     if (-not $SkipTests) {
         # The paint-time budgets (label perf) are timed against this machine, so
         # they are left to scripts\build.ps1 -Label perf; everything else runs.
+        # Tests that run in real time (label paced) need a free core when they
+        # wake, so they run one at a time after the rest, as in CI.
         $self = Get-Process -Id $PID
         $previousPriority = $self.PriorityClass
         if ($LowPriority) { $self.PriorityClass = 'Idle' }
         Push-Location $root
         try {
-            ctest --preset package -LE perf
+            ctest --preset package -LE 'perf|paced'
             if ($LASTEXITCODE -ne 0) { throw "tests failed ($LASTEXITCODE)" }
+            ctest --preset package -L paced --parallel 1
+            if ($LASTEXITCODE -ne 0) { throw "paced tests failed ($LASTEXITCODE)" }
         }
         finally {
             $self.PriorityClass = $previousPriority
