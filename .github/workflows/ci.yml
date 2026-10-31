@@ -88,6 +88,20 @@ jobs:
         if: always() && steps.build.outcome == 'success'
         run: ctest --preset ci --label-regex paced --parallel 1
 
+      # A failing test's stack report prints frames as module+offset; with these,
+      # llvm-symbolizer turns them into lines (docs/building.md, "Tests").
+      - name: Upload the test programs for symbolising
+        if: failure() && steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-programs-${{ github.sha }}
+          retention-days: 14
+          path: |
+            build/ci/tests/unit/northlight_unit_tests.exe
+            build/ci/tests/unit/northlight_unit_tests.pdb
+            build/ci/tests/unit_juce/northlight_juce_tests.exe
+            build/ci/tests/unit_juce/northlight_juce_tests.pdb
+
       - name: Check formatting
         if: always()
         shell: pwsh

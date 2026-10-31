@@ -260,6 +260,17 @@ limit; 0 turns it off). It also turns off Windows' error dialogs and its error
 reporting for the suites, so a failing test never waits on either. CTest shows the
 report as the test's output.
 
+The report prints each frame first as `module+offset`, using nothing but the
+system's unwinder: a hung thread can hold a lock the symbol library needs, and on
+CI loading symbols once blocked until CTest's timeout. It then names the frames
+with dbghelp, giving up after 30 seconds. When only the first pass made it, the
+offsets still lead to lines. A failed CI run uploads the test programs and their
+PDBs as the `test-programs-<commit>` artifact; download it, then:
+
+```powershell
+& "<VS>\VC\Tools\MSVC\<version>\bin\Hostx64\x64\llvm-symbolizer.exe" --obj=northlight_juce_tests.exe --relative-address 0x1a2b3c 0x4d5e6f
+```
+
 **Paced tests.** A test that runs in real time, and so needs a free core when it
 wakes, carries the `[paced]` tag; the unit suite's tags are CTest labels. On a busy
 machine such a test can fail for want of a core, so CI runs the other tests in
