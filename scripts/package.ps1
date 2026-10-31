@@ -164,14 +164,19 @@ if (-not $SkipBuild) {
         # they are left to scripts\build.ps1 -Label perf; everything else runs.
         # Tests that run in real time (label paced) need a free core when they
         # wake, so they run one at a time after the rest, as in CI.
+        # A failed test runs once more before the package fails. Some JUCE test
+        # programs hang now and then while JUCE shuts down (docs/building.md,
+        # "Tests"); CI runs every test with no second try, so a hang still shows
+        # there, and a test that fails twice still fails the package.
+        $retry = @('--repeat', 'until-pass:2')
         $self = Get-Process -Id $PID
         $previousPriority = $self.PriorityClass
         if ($LowPriority) { $self.PriorityClass = 'Idle' }
         Push-Location $root
         try {
-            ctest --preset package -LE 'perf|paced'
+            ctest --preset package -LE 'perf|paced' @retry
             if ($LASTEXITCODE -ne 0) { throw "tests failed ($LASTEXITCODE)" }
-            ctest --preset package -L paced --parallel 1
+            ctest --preset package -L paced --parallel 1 @retry
             if ($LASTEXITCODE -ne 0) { throw "paced tests failed ($LASTEXITCODE)" }
         }
         finally {

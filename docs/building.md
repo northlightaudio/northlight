@@ -163,8 +163,9 @@ both from the same files.
 ```
 
 It builds the `package` preset (Release, warnings as errors) in `build/package`,
-which no other preset shares, runs the tests except the timed `perf` budgets,
-copies the app folder to `build/package/stage`, signs the executables when asked,
+which no other preset shares, runs the tests except the timed `perf` budgets
+(giving a failed test one more run, for the shutdown hang described under "Tests";
+CI gives none), copies the app folder to `build/package/stage`, signs the executables when asked,
 and writes to `build/package/dist`:
 
 | File | What it is |
@@ -263,13 +264,21 @@ report as the test's output.
 The report prints each frame first as `module+offset`, using nothing but the
 system's unwinder: a hung thread can hold a lock the symbol library needs, and on
 CI loading symbols once blocked until CTest's timeout. It then names the frames
-with dbghelp, giving up after 30 seconds. When only the first pass made it, the
-offsets still lead to lines. A failed CI run uploads the test programs and their
+with dbghelp, giving up after 30 seconds. Between the two passes it says which
+thread holds Windows' loader lock, which loading and unloading a DLL needs; a holder
+that no longer exists was killed while holding it, and the lock is never released.
+When only the first pass made it, the offsets still lead to lines. A failed CI run uploads the test programs and their
 PDBs as the `test-programs-<commit>` artifact; download it, then:
 
 ```powershell
 & "<VS>\VC\Tools\MSVC\<version>\bin\Hostx64\x64\llvm-symbolizer.exe" --obj=northlight_juce_tests.exe --relative-address 0x1a2b3c 0x4d5e6f
 ```
+
+**A known hang.** Now and then a JUCE test program hangs after its test has
+finished: `ScopedJuceInitialiser_GUI`'s destructor unloads Direct2D's DLLs, and
+`FreeLibrary` waits for the loader lock for ever. The cause is not yet known; the
+report's loader-lock line is there to find it. Until it is fixed, a release package
+gives a failed test a second run.
 
 **Paced tests.** A test that runs in real time, and so needs a free core when it
 wakes, carries the `[paced]` tag; the unit suite's tags are CTest labels. On a busy
