@@ -21,12 +21,26 @@ jobs:
       SCCACHE_CACHE_SIZE: 4G
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
+      # What scripts/build.ps1 does: find Visual Studio, run vcvars64 and keep the
+      # variables it changes for the later steps. (ilammy/msvc-dev-cmd did this,
+      # but still runs on the deprecated Node.js 20.)
       - name: Set up MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw 'No Visual Studio with the x64 C++ tools found' }
+          $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+          $lines = cmd /c "`"$vcvars`" >nul 2>&1 && set"
+          if ($LASTEXITCODE -ne 0) { throw "vcvars64.bat failed ($LASTEXITCODE)" }
+          foreach ($line in $lines) {
+            $name, $value = $line -split '=', 2
+            if ($value -and [Environment]::GetEnvironmentVariable($name) -ne $value) {
+              "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            }
+          }
 
       - name: Set up sccache
         uses: mozilla-actions/sccache-action@v0.0.11
@@ -37,7 +51,7 @@ jobs:
       # fails: actions/cache on its own saves only when the whole job succeeds.
       - name: Restore fetched dependencies
         id: deps
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: build/ci/_deps
           key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
@@ -45,7 +59,7 @@ jobs:
       # Each run saves a new entry and starts from the newest one; GitHub evicts
       # the oldest when the repository's caches pass their size limit.
       - name: Restore compiler cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .sccache
           key: sccache-${{ runner.os }}-${{ github.sha }}
@@ -67,14 +81,14 @@ jobs:
 
       - name: Save compiler cache
         if: always() && steps.configure.outcome == 'success'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .sccache
           key: sccache-${{ runner.os }}-${{ github.sha }}
 
       - name: Save fetched dependencies
         if: always() && steps.configure.outcome == 'success' && steps.deps.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: build/ci/_deps
           key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
@@ -92,7 +106,7 @@ jobs:
       # llvm-symbolizer turns them into lines (docs/building.md, "Tests").
       - name: Upload the test programs for symbolising
         if: failure() && steps.build.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-programs-${{ github.sha }}
           retention-days: 14
