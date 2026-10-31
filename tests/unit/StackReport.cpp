@@ -329,15 +329,21 @@ int hangSeconds()
     return std::atoi(value);
 }
 
+// Returns once the watchdog runs. A thread still starting holds the loader's lock,
+// and a test that suspends every other thread (MiniDumpWriteDump on its own process
+// does) would then wait on that lock for ever, with the watchdog frozen too: on CI
+// the crash report test once timed out that way, with no report.
 void startWatchdog(int seconds)
 {
+    const HANDLE running = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     // Detached: when the process ends the OS ends this thread with it.
     std::thread(
-        [seconds]
+        [seconds, running]
         {
             const auto limit = static_cast<ULONGLONG>(seconds) * 1000;
             char what[64];
             std::snprintf(what, sizeof(what), "is still running after %d s: it has hung", seconds);
+            SetEvent(running);
             for (;;)
             {
                 Sleep(1000);
@@ -347,6 +353,9 @@ void startWatchdog(int seconds)
             }
         })
         .detach();
+    // Closed only once set: after a timeout the thread may still set it.
+    if (running != nullptr && WaitForSingleObject(running, 10 * 1000) == WAIT_OBJECT_0)
+        CloseHandle(running);
 }
 
 // Installed before main, so a failure in any test, or in static set-up, reports.
