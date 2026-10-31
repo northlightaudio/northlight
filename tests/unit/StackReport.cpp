@@ -18,7 +18,8 @@
 // of modules taken when the first test started, and prints each frame as
 // module+offset (llvm-symbolizer turns that into a line, given the executable and
 // its PDB). The second names the functions and lines with dbghelp on a thread of
-// its own; if that blocks, the process ends anyway after symbolSeconds.
+// its own; if that blocks, the process ends anyway after symbolSeconds. Between the
+// two it says who holds the loader's lock, and whether that thread still exists.
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -33,6 +34,7 @@
 #include <catch2/reporters/catch_reporter_registrars.hpp>
 
 #include <dbghelp.h>
+#include <intrin.h>
 #include <psapi.h>
 #include <tlhelp32.h>
 
@@ -197,6 +199,37 @@ void walkOtherThread(DWORD threadId)
     CloseHandle(thread);
 }
 
+// Who holds the loader's lock, which loading and unloading a DLL (and so the symbol
+// library) needs. Read from the process environment block, without taking it. A
+// holder that no longer exists was ended while holding it (TerminateThread), and the
+// lock is then never released.
+void printLoaderLock()
+{
+#if defined(_M_X64)
+    // PEB::LoaderLock, at 0x110 in the 64-bit PEB; the PEB is at gs:[0x60].
+    const auto* peb = reinterpret_cast<const unsigned char*>(__readgsqword(0x60));
+    const auto* lock = *reinterpret_cast<RTL_CRITICAL_SECTION* const*>(peb + 0x110);
+    const auto owner = static_cast<DWORD>(reinterpret_cast<ULONG_PTR>(lock->OwningThread));
+    char line[192];
+    if (owner == 0)
+        std::snprintf(line, sizeof(line), "\n  The loader lock is free.\n");
+    else
+    {
+        const HANDLE thread = OpenThread(SYNCHRONIZE, FALSE, owner);
+        const bool alive = thread != nullptr && WaitForSingleObject(thread, 0) == WAIT_TIMEOUT;
+        if (thread != nullptr)
+            CloseHandle(thread);
+        std::snprintf(line,
+                      sizeof(line),
+                      "\n  The loader lock is held by thread %lu%s (entered %ld times).\n",
+                      owner,
+                      alive ? "" : ", which no longer exists: it was ended while holding it",
+                      lock->RecursionCount);
+    }
+    print(line);
+#endif
+}
+
 // The second pass: names each frame kept by the first.
 DWORD WINAPI symbolise(void*)
 {
@@ -289,6 +322,7 @@ DWORD WINAPI symbolise(void*)
     }
     for (int s = 0; s < stackCount; ++s)
         printRawStack(stacks[s]);
+    printLoaderLock();
 
     // Names, if the symbol library can load them in time.
     if (const HANDLE namer = CreateThread(nullptr, 0, &symbolise, nullptr, 0, nullptr))
