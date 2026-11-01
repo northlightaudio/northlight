@@ -538,7 +538,7 @@ private:
     using Span = edit::Span;
     std::optional<Span> spanOf(const ClipRef& ref) const;
     bool isSelected(const ClipRef& ref) const noexcept;
-    Hit hitTest(juce::Point<int> p) const noexcept;
+    Hit hitAt(juce::Point<int> p) const noexcept;
     bool isSelected(core::Id track, core::Id clip) const noexcept;
     void select(const ClipRef& ref, bool add);
     // Tells the owner (onSelectionChanged) when the clip selection differs from what

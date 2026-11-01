@@ -48,6 +48,8 @@ ctest --preset windows-debug
 | `windows-release` | Release | Real-time checks off |
 | `package` | Release | Warnings as errors; built by `scripts/package.ps1` into `build/package` |
 | `ci` | RelWithDebInfo | Warnings as errors |
+| `linux-debug`, `linux-relwithdebinfo` | Debug, RelWithDebInfo | Linux (experimental, see [Linux](#linux-experimental)) |
+| `linux-ci` | RelWithDebInfo | Linux, warnings as errors |
 
 The application is `build/<preset>/src/app/northlight_artefacts/<config>/Northlight.exe`.
 The build copies the design tokens, fonts, icons, brand files, the licence and the
@@ -77,8 +79,9 @@ VST3 hosting needs no external SDK; the VST3 SDK comes with JUCE.
 
 Windows is the supported platform. The tree also builds with GCC on Linux, with no
 warnings from its own code, and its tests pass (checked on Arch under WSL, GCC 16),
-but the result is not a usable DAW yet. Nothing builds it on Linux automatically, so
-check a change that touches platform code, includes or warnings by building it there.
+but the result is not a usable DAW yet. CI builds it on Ubuntu with GCC 14, warnings
+as errors and no precompiled headers (the `linux-ci` preset), and runs the tests
+under a virtual display (`xvfb-run`).
 
 You need CMake 3.28 or later, Ninja, a C++20 compiler, Python 3 and JUCE's Linux
 dependencies: the ALSA, FreeType, fontconfig, X11 (Xrandr, Xinerama, Xcursor, Xext)
@@ -91,6 +94,11 @@ cmake --preset linux-debug
 cmake --build --preset linux-debug
 ctest --preset linux-debug
 ```
+
+On Ubuntu 24.04 the packages are `ninja-build g++-14 libasound2-dev libfreetype-dev
+libfontconfig1-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev
+libxext-dev libxrender-dev libxcomposite-dev libgl1-mesa-dev fonts-dejavu-core`
+(the `linux` job in `.github/workflows/ci.yml` installs the same).
 
 What is missing on Linux:
 
@@ -111,7 +119,7 @@ What is missing on Linux:
 | `NORTHLIGHT_BUILD_TESTS` | ON | Build the unit tests |
 | `NORTHLIGHT_BUILD_HARDWARE_TESTS` | ON | Build the hardware tools (never run by CTest) |
 | `NORTHLIGHT_RT_CHECKS` | ON (OFF in `windows-release`) | Hook allocation to catch it on real-time threads |
-| `NORTHLIGHT_WARNINGS_AS_ERRORS` | OFF (ON in `ci`) | Treat warnings as errors |
+| `NORTHLIGHT_WARNINGS_AS_ERRORS` | OFF (ON in `ci` and `linux-ci`) | Treat warnings as errors |
 | `NORTHLIGHT_ASIO` | ON | ASIO audio devices (Windows only) |
 | `NORTHLIGHT_ASIO_SDK_DIR` | empty | Optional: an ASIO SDK root whose header replaces the one bundled with JUCE |
 | `NORTHLIGHT_VERSION_LABEL` | `dev` | The version's label: `dev`, a pre-release such as `beta.1`, or empty for a release (see [CONTRIBUTING.md](../CONTRIBUTING.md#versions-and-releases)) |

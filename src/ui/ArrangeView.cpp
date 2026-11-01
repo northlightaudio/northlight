@@ -1371,7 +1371,7 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
     markers_.clearSelection();
 
     const auto at = sampleForX(e.x);
-    const auto hit = hitTest(e.getPosition());
+    const auto hit = hitAt(e.getPosition());
     // A missing clip's Locate… link asks for the file (screens/arrange.md).
     if (hit.clip != nullptr && !e.mods.isPopupMenu() && onLocateMedia && mediaMissing(hit.clip->mediaPath) &&
         locateLinkBounds(*hit.clip, hit.row).expanded(2).contains(e.getPosition()))
@@ -1581,7 +1581,7 @@ void ArrangeView::hoverAt(juce::Point<int> p, juce::ModifierKeys mods)
     // Take lanes, a comp boundary or the comp's chip set their own cursor.
     const auto takeArea = takeRow(rowAtY(p.y));
     const auto takeCursor = takes_.hover(p, takeArea.track != nullptr ? &takeArea : nullptr);
-    const auto hit = hitTest(p);
+    const auto hit = hitAt(p);
     // On a clip the select, range and pencil tools trim, fade and move; the
     // other tools act on the whole clip, so their cursor stays.
     const bool onClip = hit.clip != nullptr || hit.midiClip != nullptr;
@@ -1913,7 +1913,7 @@ bool ArrangeView::isSelected(const ClipRef& ref) const noexcept
     return std::find(selection_.begin(), selection_.end(), ref) != selection_.end();
 }
 
-ArrangeView::Hit ArrangeView::hitTest(juce::Point<int> p) const noexcept
+ArrangeView::Hit ArrangeView::hitAt(juce::Point<int> p) const noexcept
 {
     Hit hit;
     if (p.x < headerWidth() || p.x >= getWidth() - scrollbarWidth)
@@ -2335,7 +2335,7 @@ void ArrangeView::updateSplitHover(juce::Point<int> p, juce::ModifierKeys mods)
                          p.y < getHeight() - scrollbarHeight;
     if (inLanes && project_ != nullptr)
     {
-        const auto hit = hitTest(p);
+        const auto hit = hitAt(p);
         if (const auto ref = clipAt(hit); ref.clip != core::invalidId)
             if (const auto span = spanOf(ref))
             {
@@ -3147,7 +3147,7 @@ void ArrangeView::mouseDoubleClick(const juce::MouseEvent& e)
         }
         return;
     }
-    const auto hit = hitTest(e.getPosition());
+    const auto hit = hitAt(e.getPosition());
     if (hit.midiClip != nullptr && onOpenMidiClip)
         onOpenMidiClip(hit.track->id, hit.midiClip->id);
     else if (hit.clip != nullptr && onOpenAudioClip)

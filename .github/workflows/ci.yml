@@ -127,3 +127,85 @@ jobs:
         run: |
           $files = git ls-files -- '*.cpp' '*.h'
           clang-format --dry-run --Werror $files
+
+  # Linux is experimental (docs/building.md, "Linux"); this job keeps it building
+  # and its tests passing, with warnings as errors, so a portability break shows
+  # on the change that makes it.
+  linux:
+    name: Linux x64 (GCC)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SCCACHE_DIR: ${{ github.workspace }}/.sccache
+      SCCACHE_CACHE_SIZE: 4G
+      CC: gcc-14
+      CXX: g++-14
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # JUCE's Linux dependencies, Ninja, a sans-serif, serif and monospaced font
+      # (the tests use the system's), and a virtual display for the JUCE tests.
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build g++-14 \
+            libasound2-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev \
+            libxrender-dev libxcomposite-dev libgl1-mesa-dev \
+            fonts-dejavu-core xvfb xauth
+
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: v0.18.0
+
+      - name: Restore fetched dependencies
+        id: deps
+        uses: actions/cache/restore@v6
+        with:
+          path: build/linux-ci/_deps
+          key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Restore compiler cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .sccache
+          key: sccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: sccache-${{ runner.os }}-
+
+      # Precompiled headers off, as on Windows: sccache cannot cache a compile
+      # that uses one, and a build without them catches a missing include.
+      - name: Configure
+        id: configure
+        run: cmake --preset linux-ci -DNORTHLIGHT_PCH=OFF -DNORTHLIGHT_COMPILER_CACHE=ON
+
+      - name: Build
+        id: build
+        run: cmake --build --preset linux-ci --parallel
+
+      - name: Compiler cache statistics
+        if: always() && steps.configure.outcome == 'success'
+        run: sccache --stop-server
+
+      - name: Save compiler cache
+        if: always() && steps.configure.outcome == 'success'
+        uses: actions/cache/save@v6
+        with:
+          path: .sccache
+          key: sccache-${{ runner.os }}-${{ github.sha }}
+
+      - name: Save fetched dependencies
+        if: always() && steps.configure.outcome == 'success' && steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: build/linux-ci/_deps
+          key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Test
+        run: xvfb-run -a ctest --preset linux-ci --label-exclude paced
+
+      - name: Test (paced, one at a time)
+        if: always() && steps.build.outcome == 'success'
+        run: xvfb-run -a ctest --preset linux-ci --label-regex paced --parallel 1

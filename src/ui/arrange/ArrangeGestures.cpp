@@ -725,7 +725,7 @@ void ArrangeView::SweepGesture::over(const ClipRef& ref)
 
 void ArrangeView::SweepGesture::drag(const juce::MouseEvent& e, core::SamplePosition)
 {
-    if (const auto ref = v.clipAt(v.hitTest(e.getPosition())); ref.clip != core::invalidId)
+    if (const auto ref = v.clipAt(v.hitAt(e.getPosition())); ref.clip != core::invalidId)
         over(ref);
 }
 

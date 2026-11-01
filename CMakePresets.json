@@ -70,6 +70,15 @@
       "displayName": "Linux x64 RelWithDebInfo",
       "inherits": "linux-base",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+    },
+    {
+      "name": "linux-ci",
+      "displayName": "Linux CI (RelWithDebInfo, warnings as errors)",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "NORTHLIGHT_WARNINGS_AS_ERRORS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -79,7 +88,8 @@
     { "name": "package", "configurePreset": "package" },
     { "name": "ci", "configurePreset": "ci" },
     { "name": "linux-debug", "configurePreset": "linux-debug" },
-    { "name": "linux-relwithdebinfo", "configurePreset": "linux-relwithdebinfo" }
+    { "name": "linux-relwithdebinfo", "configurePreset": "linux-relwithdebinfo" },
+    { "name": "linux-ci", "configurePreset": "linux-ci" }
   ],
   "testPresets": [
     { "name": "windows-debug", "configurePreset": "windows-debug", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } },
@@ -88,6 +98,7 @@
     { "name": "package", "configurePreset": "package", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } },
     { "name": "ci", "configurePreset": "ci", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } },
     { "name": "linux-debug", "configurePreset": "linux-debug", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } },
-    { "name": "linux-relwithdebinfo", "configurePreset": "linux-relwithdebinfo", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } }
+    { "name": "linux-relwithdebinfo", "configurePreset": "linux-relwithdebinfo", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } },
+    { "name": "linux-ci", "configurePreset": "linux-ci", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } }
   ]
 }
