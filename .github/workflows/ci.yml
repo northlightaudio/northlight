@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# CI only reads the code. The cache and artifact steps use their own runtime
+# token, not this one.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
