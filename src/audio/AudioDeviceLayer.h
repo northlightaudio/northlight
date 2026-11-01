@@ -10,6 +10,7 @@
 
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 // The audio device layer: a thin, message-thread-only wrapper around
@@ -76,6 +77,13 @@ public:
                                     const std::string& output);
     // Where `name` is in `names`; -1 when it is not there.
     static int indexOf(const std::vector<std::string>& names, const std::string& name);
+    // The driver to open when nothing is saved, from each driver's name and whether
+    // it lists an output: JACK when it does (a JACK server or PipeWire's JACK is
+    // running), since it shares the device at low latency with other apps. Empty
+    // otherwise, which keeps JUCE's own pick (Windows Audio on Windows, ALSA on
+    // Linux).
+    static std::string
+    preferredDefaultType(const std::vector<std::pair<std::string, bool>>& typesWithOutputs);
     std::vector<std::string> inputChannelNames() const;
     std::vector<std::string> outputChannelNames() const;
 

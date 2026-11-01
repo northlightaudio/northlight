@@ -228,7 +228,10 @@ button row with a footnote (`caption`, `textTertiary`) at its left.
    label (`label`, `textPrimary`) over a one-line hint (`caption`, `textTertiary`)
    on the left, the control (260 px) on the right:
    - Driver: "The lowest latency, for recording and monitoring" when ASIO is
-     chosen, else "ASIO, when your interface has it, gives the lowest latency".
+     chosen, else "ASIO, if your interface has it, is lowest latency". On Linux,
+     "Low latency, shared with other apps" when JACK is chosen, else "JACK or
+     PipeWire gives lower latency". With nothing saved the
+     sheet opens on JACK when a JACK server (or PipeWire's JACK) is running.
    - Device: "Where Northlight plays and records".
    - Buffer size: "Smaller is more responsive; larger avoids clicks". The sizes
      the device offers (32 to 1024 when it lists none), as Audio Setup lists them,

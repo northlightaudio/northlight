@@ -63,8 +63,8 @@ void WorkerPool::takeJobs() noexcept
 void WorkerPool::workerLoop()
 {
     const rt::ScopedProAudioThread priority;
-    if (priority.joinedMmcss())
-        mmcssWorkers_.fetch_add(1, std::memory_order_relaxed);
+    if (priority.isRealtime())
+        realtimeWorkers_.fetch_add(1, std::memory_order_relaxed);
     while (true)
     {
         wake_.acquire();

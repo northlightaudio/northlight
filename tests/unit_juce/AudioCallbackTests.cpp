@@ -294,3 +294,13 @@ TEST_CASE("A picked device brings its input: the same device, or the driver's de
     CHECK(audio::AudioDeviceLayer::indexOf(names.outputs, "Volt") == 1);
     CHECK(audio::AudioDeviceLayer::indexOf(names.outputs, "Gone") == -1);
 }
+
+TEST_CASE("With nothing saved, JACK is opened when a server is running, else the system's own pick",
+          "[audio][device]")
+{
+    using Layer = audio::AudioDeviceLayer;
+    CHECK(Layer::preferredDefaultType({{"ALSA", true}, {"JACK", true}}) == "JACK");
+    CHECK(Layer::preferredDefaultType({{"ALSA", true}, {"JACK", false}}).empty()); // no server
+    CHECK(Layer::preferredDefaultType({{"ALSA", true}}).empty());
+    CHECK(Layer::preferredDefaultType({{"Windows Audio", true}, {"ASIO", true}}).empty());
+}

@@ -79,12 +79,19 @@ northlight_plugin_scan   Inspects one plugin file per process for the scanner.
 The audio callback and the workers are time-critical threads. Everything they touch
 is preallocated when a snapshot is compiled or a device is prepared.
 
-The callback thread belongs to the device driver, which sets its priority. The
-render workers join the MMCSS "Pro Audio" task (`rt/ThreadPriority.h`), which puts
-them in the real-time priority band where no ordinary thread can reach them; without
-MMCSS they fall back to `THREAD_PRIORITY_TIME_CRITICAL`. The disk thread runs at
-`THREAD_PRIORITY_HIGHEST`, above normal work and below the workers. Diagnostics
-shows how many workers joined MMCSS.
+The callback thread belongs to the device driver, which sets its priority. On
+Windows the render workers join the MMCSS "Pro Audio" task (`rt/ThreadPriority.h`),
+which puts them in the real-time priority band where no ordinary thread can reach
+them; without MMCSS they fall back to `THREAD_PRIORITY_TIME_CRITICAL`. The disk
+thread runs at `THREAD_PRIORITY_HIGHEST`, above normal work and below the workers.
+On Linux the workers run `SCHED_FIFO` at priority 70, set directly when the user's
+`rtprio` limit allows it and otherwise granted by rtkit over the system D-Bus
+(`rt/RtKit.h`, with libdbus loaded when first needed), which makes them `SCHED_RR`
+(with `SCHED_RESET_ON_FORK`, so reverting keeps that flag), caps the priority and
+requires a CPU-time limit on real-time threads (`RLIMIT_RTTIME`, set to rtkit's
+maximum). The disk thread gets nice -10 the same two ways. Workers block between
+batches, so the time limit only ends a worker stuck in one job. Diagnostics shows
+how many workers got real-time scheduling ("MMCSS" on Windows).
 
 No thread is ever killed. Each is told to stop and then waited for, however long
 that takes: a `juce::Thread` with `stopThread(-1)`, and one-at-a-time background jobs

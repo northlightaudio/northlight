@@ -112,8 +112,8 @@ them), disk gaps (streamed clips that ran dry, in `warning` when non-zero), and 
 `--output-tap` runs, an Output tap row with the jumps and gaps found in what was sent
 to the driver ("0 jumps, 0 gaps", in `warning` when non-zero). Rows without a
 sparkline let their value use the rest of the row. Also disk read-ahead fill, plugin
-latencies per track, worker thread count with how many joined MMCSS ("15 (15 MMCSS)", in `warning`
-when any did not), device state. All in `small` and
+latencies per track, worker thread count with how many joined MMCSS ("15 (15 MMCSS)"; on Linux
+how many run real-time, "15 (15 real-time)"; in `warning` when any did not), device state. All in `small` and
 `value` mono; `warning`/`danger` colouring at the same thresholds as the status
 bar. A "Copy report" ghost button copies a text summary for bug reports.
 

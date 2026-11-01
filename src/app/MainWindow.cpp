@@ -1386,7 +1386,7 @@ private:
         sample.sampleRate = s.sampleRate;
         sample.bufferSize = s.bufferSize;
         sample.workerThreads = session_.engine().workerThreads();
-        sample.mmcssWorkerThreads = session_.engine().mmcssWorkerThreads();
+        sample.realtimeWorkerThreads = session_.engine().realtimeWorkerThreads();
         sample.outputLatencySamples = session_.engine().outputLatencySamples();
         sample.recording = session_.isRecording();
         const auto paints = ui::FrameStats::summary();

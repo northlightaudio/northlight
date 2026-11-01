@@ -14,6 +14,18 @@ namespace northlight
 
 namespace
 {
+// What the Driver row says about the driver chosen: which one is the low-latency
+// choice on this platform, and whether this is it.
+juce::String driverHint(const juce::String& driver)
+{
+#if JUCE_WINDOWS
+    return driver == "ASIO" ? "The lowest latency, for recording and monitoring"
+                            : "ASIO, if your interface has it, is lowest latency";
+#else
+    return driver == "JACK" ? "Low latency, shared with other apps" : "JACK or PipeWire gives lower latency";
+#endif
+}
+
 // The first-run sheet's content (screens/setup.md 8.3): driver, device, buffer size
 // and a live input meter so the user sees signal before the project opens.
 class FirstRunContent final : public juce::Component, private juce::Timer
@@ -85,11 +97,8 @@ public:
         g.fillRoundedRectangle(card, theme_.radius.md);
         g.setColour(c.lineSubtle);
         g.drawRoundedRectangle(card.reduced(0.5f), theme_.radius.md, 1.0f);
-        const bool asio = driver_.getText() == "ASIO";
         const std::array<std::pair<const char*, juce::String>, 4> rows{{
-            {"Driver",
-             asio ? juce::String("The lowest latency, for recording and monitoring")
-                  : juce::String("ASIO, if your interface has it, is lowest latency")},
+            {"Driver", driverHint(driver_.getText())},
             {"Device", "Where Northlight plays and records"},
             {"Buffer size", "Smaller is more responsive; larger avoids clicks"},
             {"Input", "Play or sing: the meter should move"},

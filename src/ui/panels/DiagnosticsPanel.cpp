@@ -1,5 +1,6 @@
 #include "ui/panels/DiagnosticsPanel.h"
 
+#include "engine/rt/ThreadPriority.h"
 #include "ui/NorthlightLookAndFeel.h"
 
 namespace northlight::ui
@@ -41,8 +42,9 @@ juce::String DiagnosticsPanel::report() const
          << ", disk gaps: " << last_.diskGaps << "\n";
     if (last_.tapActive)
         text << "Output tap: " << last_.tapJumps << " jumps, " << last_.tapGaps << " gaps\n";
-    text << "Worker threads: " << last_.workerThreads << " (" << last_.mmcssWorkerThreads
-         << " MMCSS), output latency: " << last_.outputLatencySamples << " samples\n";
+    text << "Worker threads: " << last_.workerThreads << " (" << last_.realtimeWorkerThreads << " "
+         << rt::realtimeSchedulingName() << "), output latency: " << last_.outputLatencySamples
+         << " samples\n";
     text << "UI frame time: p50 " << juce::String(last_.frameP50Ms, 2) << " ms, p99 "
          << juce::String(last_.frameP99Ms, 2) << " ms, max " << juce::String(last_.frameMaxMs, 2) << " ms\n";
     text << "Paint time (arrange, mixer): p50 " << juce::String(last_.paintP50Ms, 2) << " ms, p99 "
@@ -144,10 +146,11 @@ void DiagnosticsPanel::paint(juce::Graphics& g)
                                : last_.device + "  " + juce::String(last_.sampleRate / 1000.0, 1) +
                                      " kHz / " + juce::String(last_.bufferSize),
         last_.device.isEmpty() ? c.warning : c.textPrimary);
-    // A worker outside MMCSS is a scheduling risk under load, so it is flagged.
+    // A worker without real-time scheduling is a risk under load, so it is flagged.
     row("Worker threads",
-        juce::String(last_.workerThreads) + " (" + juce::String(last_.mmcssWorkerThreads) + " MMCSS)",
-        last_.mmcssWorkerThreads < last_.workerThreads ? c.warning : c.textPrimary);
+        juce::String(last_.workerThreads) + " (" + juce::String(last_.realtimeWorkerThreads) + " " +
+            rt::realtimeSchedulingName() + ")",
+        last_.realtimeWorkerThreads < last_.workerThreads ? c.warning : c.textPrimary);
     row("Output latency", juce::String(last_.outputLatencySamples) + " smp", c.textPrimary);
     row("UI frame p50 / p99 / max",
         juce::String(last_.frameP50Ms, 1) + " / " + juce::String(last_.frameP99Ms, 1) + " / " +

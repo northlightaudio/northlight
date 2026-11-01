@@ -126,6 +126,22 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
+# JACK (Linux): JACK servers and PipeWire's JACK. JUCE loads libjack when the app
+# runs, so only the headers are needed to build, and without a server the JACK
+# driver simply lists no devices.
+# ---------------------------------------------------------------------------
+set(NORTHLIGHT_HAS_JACK 0)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_path(NORTHLIGHT_JACK_INCLUDE_DIR jack/jack.h)
+    if(NORTHLIGHT_JACK_INCLUDE_DIR)
+        set(NORTHLIGHT_HAS_JACK 1)
+        message(STATUS "Northlight: JACK enabled")
+    else()
+        message(WARNING "Northlight: no JACK headers (jack/jack.h) found, so audio is ALSA only; install libjack-jackd2-dev or your distribution's JACK development package")
+    endif()
+endif()
+
+# ---------------------------------------------------------------------------
 # Shared compile settings
 # ---------------------------------------------------------------------------
 add_library(northlight_options INTERFACE)

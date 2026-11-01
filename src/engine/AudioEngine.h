@@ -44,7 +44,7 @@ public:
     ~AudioEngine();
 
     int workerThreads() const noexcept { return pool_.numWorkers(); }
-    int mmcssWorkerThreads() const noexcept { return pool_.mmcssWorkers(); }
+    int realtimeWorkerThreads() const noexcept { return pool_.realtimeWorkers(); }
 
     // ----- controller thread ------------------------------------------------------
     // Compiles and publishes the project. Media errors are available afterwards.

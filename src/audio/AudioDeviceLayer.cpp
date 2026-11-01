@@ -414,7 +414,32 @@ juce::String AudioDeviceLayer::open(const AudioSettings& s)
 
 juce::String AudioDeviceLayer::openDefault()
 {
+    std::vector<std::pair<std::string, bool>> types;
+    for (auto* type : manager_.getAvailableDeviceTypes())
+        types.emplace_back(toStd(type->getTypeName()), !type->getDeviceNames(false).isEmpty());
+    if (const auto preferred = preferredDefaultType(types); !preferred.empty())
+    {
+        // Its default devices, named: JUCE fills in empty names on only some paths.
+        const auto names = deviceNames(preferred);
+        AudioSettings s;
+        s.deviceType = preferred;
+        if (names.defaultOutput >= 0 && names.defaultOutput < static_cast<int>(names.outputs.size()))
+            s.outputDevice = names.outputs[static_cast<size_t>(names.defaultOutput)];
+        if (names.defaultInput >= 0 && names.defaultInput < static_cast<int>(names.inputs.size()))
+            s.inputDevice = names.inputs[static_cast<size_t>(names.defaultInput)];
+        if (!s.outputDevice.empty() && open(s).isEmpty())
+            return {};
+    }
     return manager_.initialiseWithDefaultDevices(defaultChannelsNeeded, defaultChannelsNeeded);
+}
+
+std::string
+AudioDeviceLayer::preferredDefaultType(const std::vector<std::pair<std::string, bool>>& typesWithOutputs)
+{
+    for (const auto& [name, hasOutputs] : typesWithOutputs)
+        if (name == "JACK" && hasOutputs)
+            return name;
+    return {};
 }
 
 AudioSettings AudioDeviceLayer::settings() const

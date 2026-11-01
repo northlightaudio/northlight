@@ -51,8 +51,9 @@ public:
     // rest of the system) so a worker is never waiting behind the callback.
     static int recommendedWorkerCount() noexcept;
 
-    // How many workers joined MMCSS "Pro Audio" (the rest run time-critical); diagnostics.
-    int mmcssWorkers() const noexcept { return mmcssWorkers_.load(std::memory_order_relaxed); }
+    // How many workers got real-time scheduling (MMCSS "Pro Audio" on Windows, where
+    // the rest run time-critical; SCHED_FIFO on Linux); diagnostics.
+    int realtimeWorkers() const noexcept { return realtimeWorkers_.load(std::memory_order_relaxed); }
 
 private:
     void workerLoop();
@@ -78,7 +79,7 @@ private:
     alignas(cacheLine) std::atomic<int> remaining_{0};       // jobs not yet finished
     alignas(cacheLine) std::atomic<int> inBatch_{0};         // workers currently inside takeJobs
     alignas(cacheLine) std::atomic<int> permits_{0};         // wake permits released but not yet consumed
-    std::atomic<int> mmcssWorkers_{0};
+    std::atomic<int> realtimeWorkers_{0};
     Job job_ = nullptr;
     void* context_ = nullptr;
 };

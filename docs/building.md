@@ -97,8 +97,20 @@ ctest --preset linux-debug
 
 On Ubuntu 24.04 the packages are `ninja-build g++-14 libasound2-dev libfreetype-dev
 libfontconfig1-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev
-libxext-dev libxrender-dev libxcomposite-dev libgl1-mesa-dev fonts-dejavu-core`
-(the `linux` job in `.github/workflows/ci.yml` installs the same).
+libxext-dev libxrender-dev libxcomposite-dev libgl1-mesa-dev libjack-jackd2-dev
+fonts-dejavu-core` (the `linux` job in `.github/workflows/ci.yml` installs the same).
+
+Audio runs through ALSA, or JACK when the JACK headers were found at configure time
+(otherwise the configure warns). JACK covers JACK servers and PipeWire, through its
+JACK layer (`pipewire-jack`); the app loads libjack when it runs, so it is not a
+dependency. With no saved device, Northlight opens JACK when a server is running and
+ALSA's default otherwise.
+
+Render workers run real-time (`SCHED_FIFO`, or `SCHED_RR` from rtkit) when the user may set it themselves
+(membership of a group with an `rtprio` limit, usually `audio`) or when rtkit grants
+it; the disk thread is raised to nice -10 the same ways. Diagnostics shows how many
+workers got real-time scheduling. Without either, they run as normal threads and a
+busy machine can make a block late.
 
 What is missing on Linux:
 
@@ -106,8 +118,6 @@ What is missing on Linux:
   editor. VST3 editors go through JUCE and are untested.
 - Crash containment around plugin calls (`CrashGuard`) does nothing; a crashing
   plugin takes the app down. Scanning still runs in a separate process.
-- Render workers run at normal priority (no `SCHED_FIFO` or rtkit request).
-- Audio is ALSA only; JACK is not enabled.
 - Crash reports (minidumps) and the "reduce motion" and high-contrast system
   settings are Windows only.
 - No installer or package; `scripts/package.ps1` makes the Windows ones only.
