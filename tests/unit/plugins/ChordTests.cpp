@@ -22,20 +22,22 @@ std::vector<int> notesOf(const p::ChordNotes& c)
 TEST_CASE("A chord by shape is inverted and voiced", "[plugins][midi][chord]")
 {
     using namespace p::chord;
-    CHECK(notesOf(byShape(60, major, 0, close)) == std::vector<int>{60, 64, 67});
-    CHECK(notesOf(byShape(60, minor7, 0, close)) == std::vector<int>{60, 63, 67, 70});
-    CHECK(notesOf(byShape(60, major, 1, close)) == std::vector<int>{64, 67, 72});
+    CHECK(notesOf(byShape(60, major, 0, Voicing::close)) == std::vector<int>{60, 64, 67});
+    CHECK(notesOf(byShape(60, minor7, 0, Voicing::close)) == std::vector<int>{60, 63, 67, 70});
+    CHECK(notesOf(byShape(60, major, 1, Voicing::close)) == std::vector<int>{64, 67, 72});
     CHECK(notesOf(byShape(60, major7, 0, drop2)) == std::vector<int>{55, 60, 64, 71});
-    CHECK(notesOf(byShape(60, major, 0, open)) == std::vector<int>{60, 67, 76});
+    CHECK(notesOf(byShape(60, major, 0, Voicing::open)) == std::vector<int>{60, 67, 76});
 }
 
 TEST_CASE("A chord in the key stacks the scale's thirds from the key pressed", "[plugins][midi][chord]")
 {
     using namespace p::chord;
-    CHECK(notesOf(inKey(62, 0, 0, cMajor, 0, close)) == std::vector<int>{62, 65, 69});     // D minor
-    CHECK(notesOf(inKey(67, 1, 0, cMajor, 0, close)) == std::vector<int>{67, 71, 74, 77}); // G7
-    CHECK(notesOf(inKey(71, 0, 0, cMajor, 0, close)) == std::vector<int>{71, 74, 77});     // B diminished
-    CHECK(notesOf(inKey(57, 0, 9, cMajor, 0, close)) == std::vector<int>{57, 60, 64}); // A minor in A minor
+    CHECK(notesOf(inKey(62, 0, 0, cMajor, 0, Voicing::close)) == std::vector<int>{62, 65, 69});     // D minor
+    CHECK(notesOf(inKey(67, 1, 0, cMajor, 0, Voicing::close)) == std::vector<int>{67, 71, 74, 77}); // G7
+    CHECK(notesOf(inKey(71, 0, 0, cMajor, 0, Voicing::close)) ==
+          std::vector<int>{71, 74, 77}); // B diminished
+    CHECK(notesOf(inKey(57, 0, 9, cMajor, 0, Voicing::close)) ==
+          std::vector<int>{57, 60, 64}); // A minor in A minor
 }
 
 TEST_CASE("Chord plays its notes with the key and ends them all on release", "[plugins][midi][chord]")
@@ -122,13 +124,13 @@ TEST_CASE("Chords are named by root and quality, with the bass after a slash", "
 {
     using p::chordName;
     using namespace p::chord;
-    CHECK(chordName(0, byShape(60, major, 0, close)) == "C");
-    CHECK(chordName(2, byShape(62, minor, 0, close)) == "Dm");
-    CHECK(chordName(0, byShape(60, major7, 0, close)) == "Cmaj7");
-    CHECK(chordName(7, byShape(67, dominant7, 0, close)) == "G7");
-    CHECK(chordName(0, byShape(60, major, 1, close)) == "C/E"); // first inversion
-    CHECK(chordName(10, byShape(70, major, 0, close)) == "Bb"); // flats, as charts spell them
-    CHECK(chordName(11, byShape(71, diminished, 0, close)) == "Bdim");
+    CHECK(chordName(0, byShape(60, major, 0, Voicing::close)) == "C");
+    CHECK(chordName(2, byShape(62, minor, 0, Voicing::close)) == "Dm");
+    CHECK(chordName(0, byShape(60, major7, 0, Voicing::close)) == "Cmaj7");
+    CHECK(chordName(7, byShape(67, dominant7, 0, Voicing::close)) == "G7");
+    CHECK(chordName(0, byShape(60, major, 1, Voicing::close)) == "C/E"); // first inversion
+    CHECK(chordName(10, byShape(70, major, 0, Voicing::close)) == "Bb"); // flats, as charts spell them
+    CHECK(chordName(11, byShape(71, diminished, 0, Voicing::close)) == "Bdim");
 }
 
 TEST_CASE("Chord Pads name each pad by numeral and chord in the key", "[plugins][midi][chordpads]")

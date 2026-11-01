@@ -119,7 +119,8 @@ float Oversampler::down(const float* in) noexcept
     const auto& d = stageDesigns;
     if (stages_ == 0)
         return in[0];
-    float buffer[maxFactor];
+    // Zeroed although the copy fills what is read: GCC 14 cannot see that n >= 2.
+    float buffer[maxFactor]{};
     int n = 1 << stages_;
     std::copy(in, in + n, buffer);
     for (int s = stages_ - 1; s >= 0; --s)
