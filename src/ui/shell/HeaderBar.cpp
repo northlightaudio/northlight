@@ -314,8 +314,8 @@ void TimeDisplay::endTyping(bool commit)
 
 HeaderBar::HeaderBar(const Theme& theme)
     : theme_(theme), app_(theme, Icon::mark, "Northlight: About, Preferences, Audio Setup, Plugins"),
-      project_(theme), undo_(theme, Icon::undo, Shortcuts::withKey("Undo", Command::undo)),
-      redo_(theme, Icon::redo, Shortcuts::withKey("Redo", Command::redo)),
+      undo_(theme, Icon::undo, Shortcuts::withKey("Undo", Command::undo)),
+      redo_(theme, Icon::redo, Shortcuts::withKey("Redo", Command::redo)), project_(theme),
       goToStart_(theme, Icon::goToStart, Shortcuts::withKey("Go to start", Command::returnToStart)),
       play_(theme, Icon::play, Shortcuts::withKey("Play", Command::playStop)),
       stop_(theme, Icon::stop, Shortcuts::withKey("Stop", Command::playStop)),
@@ -327,12 +327,12 @@ HeaderBar::HeaderBar(const Theme& theme)
       tempo_(theme), snap_(theme, Icon::snap, Shortcuts::withKey("Snap: Adaptive", Command::snap)),
       ripple_(theme, Icon::ripple, Shortcuts::withKey("Ripple", Command::ripple)),
       zoomFit_(theme, Icon::zoomFit, Shortcuts::withKey("Zoom to fit", Command::zoomToFit)),
-      minimise_(theme, Icon::windowMinimise, "Minimise", false),
-      maximise_(theme, Icon::windowMaximise, "Maximise", false),
-      closeWindow_(theme, Icon::close, "Close", true),
       mixer_(theme, Icon::mixer, Shortcuts::withKey("Mixer", Command::showMixer)),
       editor_(theme, Icon::inspector, Shortcuts::withKey("Editor", Command::showEditor)),
-      browser_(theme, Icon::browser, Shortcuts::withKey("Browser", Command::showBrowser))
+      browser_(theme, Icon::browser, Shortcuts::withKey("Browser", Command::showBrowser)),
+      minimise_(theme, Icon::windowMinimise, "Minimise", false),
+      maximise_(theme, Icon::windowMaximise, "Maximise", false),
+      closeWindow_(theme, Icon::close, "Close", true)
 {
     setOpaque(true);
     const auto bind = [](IconButton& button, std::function<void()>& action)

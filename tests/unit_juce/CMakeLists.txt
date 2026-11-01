@@ -77,7 +77,8 @@ add_executable(northlight_juce_tests
     CardSnapshotTests.cpp
     FeedbackHistoryTests.cpp
     ParamBinderTests.cpp
-    ProjectLifecycleTests.cpp)
+    ProjectLifecycleTests.cpp
+    InstanceLockTests.cpp)
 
 target_link_libraries(northlight_juce_tests PRIVATE
     northlight_options

@@ -151,7 +151,11 @@ if(MSVC)
         target_compile_options(northlight_options INTERFACE /WX)
     endif()
 else()
-    target_compile_options(northlight_options INTERFACE -Wall -Wextra -Wpedantic)
+    # -Wno-missing-field-initializers: brace initialisers here often leave the
+    # trailing fields to their default member initialisers (ParameterInfo has a
+    # dozen), which GCC and Clang flag under -Wextra and MSVC does not.
+    target_compile_options(northlight_options INTERFACE -Wall -Wextra -Wpedantic
+        -Wno-missing-field-initializers)
     if(NORTHLIGHT_WARNINGS_AS_ERRORS)
         target_compile_options(northlight_options INTERFACE -Werror)
     endif()

@@ -2,6 +2,7 @@
 
 #include "Bounce.h"
 #include "SampleFiles.h"
+#include "app/InstanceLock.h"
 #include "app/Notices.h"
 #include "app/ProjectLoad.h"
 #include "audio/JuceMediaLoader.h"
@@ -291,7 +292,7 @@ public:
     // left in the folder at launch is what a session that did not close left.
     //
     // Several instances share the folder: each holds a lock file there for as long
-    // as it runs ("<instance>.lock", open so no other process can delete it) and
+    // as it runs ("<instance>.lock", an InstanceLock) and
     // names its copies after itself, so a copy whose owner is still running is
     // never offered as a leftover or deleted by another instance.
     void setAutosave(juce::File folder, std::function<int()> intervalSeconds);
@@ -663,8 +664,8 @@ private:
     std::function<int()> autosaveInterval_;
     juce::File autosaveWritten_; // the copy this session last wrote
     juce::String instanceId_ = juce::Uuid().toString().substring(0, 12);
-    std::unique_ptr<juce::FileOutputStream> autosaveLock_; // held open while the session runs
-    bool changesDiscarded_ = false;                        // discardChanges() since the project opened
+    std::unique_ptr<InstanceLock> autosaveLock_; // held while the session runs
+    bool changesDiscarded_ = false;              // discardChanges() since the project opened
     bool keepBackup_ = true;
     bool copyImportedMedia_ = false;
     // Recordings this session wrote into the shared folder (an unsaved project's).

@@ -38,7 +38,9 @@
 namespace northlight::ui
 {
 
-namespace
+// Named rather than anonymous: the strips hold these parts, and GCC warns when a
+// class with linkage has members of a type from an anonymous namespace in a header.
+inline namespace mixerparts
 {
 constexpr double minFaderDb = -60.0;
 constexpr double maxFaderDb = 6.0; // matches core::maxChannelGain
@@ -692,7 +694,7 @@ private:
     juce::Slider slider_;
 };
 
-} // namespace
+} // namespace mixerparts
 
 // ----- strip --------------------------------------------------------------------------------
 

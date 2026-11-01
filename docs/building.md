@@ -6,6 +6,8 @@
 - Visual Studio 2022 or later with the **Desktop development with C++** workload,
   which brings MSVC, CMake 3.28 or later, Ninja and clang-format
 - Git
+- Python 3, which `ctest` uses for its source checks (no literal colours in
+  `src/ui`, no thread ever killed). Without it the configure warns and skips them.
 
 The first configure downloads JUCE, Catch2, nlohmann/json, CLAP and Signalsmith
 Stretch into `build/<preset>/_deps`. Nothing else needs installing.
@@ -73,13 +75,16 @@ VST3 hosting needs no external SDK; the VST3 SDK comes with JUCE.
 
 ## Linux (experimental)
 
-Windows is the supported platform. The tree also builds and its tests pass with GCC
-on Linux (checked on Arch under WSL, GCC 16), so portability breaks show up early,
-but the result is not a usable DAW yet.
+Windows is the supported platform. The tree also builds with GCC on Linux, with no
+warnings from its own code, and its tests pass (checked on Arch under WSL, GCC 16),
+but the result is not a usable DAW yet. Nothing builds it on Linux automatically, so
+check a change that touches platform code, includes or warnings by building it there.
 
-You need CMake 3.28 or later, Ninja, a C++20 compiler and JUCE's Linux dependencies:
-the ALSA, FreeType, fontconfig, X11 (Xrandr, Xinerama, Xcursor, Xext) and OpenGL
-development packages.
+You need CMake 3.28 or later, Ninja, a C++20 compiler, Python 3 and JUCE's Linux
+dependencies: the ALSA, FreeType, fontconfig, X11 (Xrandr, Xinerama, Xcursor, Xext)
+and OpenGL development packages. Install a sans-serif, a serif and a monospaced
+font (DejaVu covers all three): the tests run without the app's bundled fonts and
+use the system's, and a debug build asserts when one of the three is missing.
 
 ```bash
 cmake --preset linux-debug
@@ -95,10 +100,9 @@ What is missing on Linux:
   plugin takes the app down. Scanning still runs in a separate process.
 - Render workers run at normal priority (no `SCHED_FIFO` or rtkit request).
 - Audio is ALSA only; JACK is not enabled.
-- Crash reports (minidumps) and the "reduce motion" system setting are Windows only.
-- The UI token check (`check-ui-tokens.ps1`) runs only on Windows.
-- GCC's `-Wextra` warns about partly initialised `ParameterInfo` aggregates, so a
-  warnings-as-errors build does not pass yet.
+- Crash reports (minidumps) and the "reduce motion" and high-contrast system
+  settings are Windows only.
+- No installer or package; `scripts/package.ps1` makes the Windows ones only.
 
 ## Options
 

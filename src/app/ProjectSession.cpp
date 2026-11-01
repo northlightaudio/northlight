@@ -131,12 +131,7 @@ ProjectSession::~ProjectSession()
     hostedAutomation_.stopTimer();
     closeProject(); // the autosave goes only if the user saved or chose not to (waits for a write)
     autosaveAlive_->store(false);
-    if (autosaveLock_ != nullptr)
-    {
-        const auto lock = autosaveLock_->getFile();
-        autosaveLock_.reset();
-        lock.deleteFile();
-    }
+    autosaveLock_.reset(); // deletes the lock file
     scanner_.cancel();
     audio_.removeChangeListener(this);
     // Stop new callbacks reaching the engine. This does not wait for one already
@@ -1354,29 +1349,18 @@ void ProjectSession::setAutosave(juce::File folder, std::function<int()> interva
 
 void ProjectSession::holdAutosaveLock()
 {
-    if (autosaveLock_ != nullptr)
-    {
-        const auto old = autosaveLock_->getFile();
-        autosaveLock_.reset();
-        old.deleteFile();
-    }
+    autosaveLock_.reset(); // deletes the old folder's lock file
     if (autosaveFolder_ == juce::File() || !autosaveFolder_.createDirectory().wasOk())
         return;
-    // Open for as long as the session lives: Windows refuses to delete a file
-    // another process holds open, so the lock's presence after a delete attempt
-    // says its owner still runs, and a crash (which closes every handle) frees it.
-    auto lock = std::make_unique<juce::FileOutputStream>(autosaveFolder_.getChildFile(instanceId_ + ".lock"));
-    if (lock->openedOk())
-        autosaveLock_ = std::move(lock);
+    // Held for as long as the session lives; a crash frees it.
+    autosaveLock_ = InstanceLock::hold(autosaveFolder_.getChildFile(instanceId_ + ".lock"));
 }
 
 bool ProjectSession::autosaveOwnerRunning(const juce::File& folder, const juce::String& owner)
 {
     if (owner.isEmpty())
         return false; // a copy from before instances owned theirs
-    const auto lock = folder.getChildFile(owner + ".lock");
-    // A lock file that can be deleted is stale (its owner closed or crashed).
-    return lock.existsAsFile() && !lock.deleteFile();
+    return InstanceLock::isHeld(folder.getChildFile(owner + ".lock"));
 }
 
 juce::File ProjectSession::currentAutosaveFile() const

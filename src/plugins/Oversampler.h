@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 
 // Oversampling for nonlinear processing: cascaded polyphase IIR half-bands
 // (two chains of first-order all-passes in z^-2, after Laurent de Soras' HIIR
@@ -44,7 +45,7 @@ struct HalfBandChains
     {
         for (int i = 0; i + 1 < d.order; i += 2)
         {
-            const auto a = static_cast<size_t>(i), b = static_cast<size_t>(i + 1);
+            const auto a = static_cast<std::size_t>(i), b = static_cast<std::size_t>(i + 1);
             const float t0 = (path0 - y[a]) * d.c[a] + x[a];
             const float t1 = (path1 - y[b]) * d.c[b] + x[b];
             x[a] = path0;

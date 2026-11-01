@@ -84,7 +84,7 @@ public:
     void paintButton(juce::Graphics& g, bool over, bool down) override
     {
         const bool lit = getToggleState();
-        const auto& image = part(lit ? "button-on.png" : "button-off.png");
+        const auto image = part(lit ? "button-on.png" : "button-off.png");
         const auto r = getLocalBounds().toFloat();
         if (image.isValid())
             hardware::drawScaled(g, image, down ? r.translated(0.0f, 0.5f) : r);
@@ -305,7 +305,7 @@ private:
     void knobBody(juce::Graphics& g, juce::Point<float> c, float skirt) const
     {
         const float image = skirt * knobImageRatio;
-        if (const auto& body = part("knob-body.png"); body.isValid())
+        if (const auto body = part("knob-body.png"); body.isValid())
         {
             hardware::drawScaled(
                 g, body, juce::Rectangle<float>(c.x - image * 0.5f, c.y - image * 0.5f, image, image * 1.5f));

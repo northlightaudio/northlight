@@ -1,12 +1,16 @@
 add_subdirectory(unit)
 
-# The design system's guard: no literal colour in src/ui (docs/design/design-system.md).
-if(WIN32)
+# Source checks, in Python so they run on every platform.
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    # The design system's guard: no literal colour in src/ui (docs/design/design-system.md).
     add_test(NAME ui_no_literal_colours
-             COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_SOURCE_DIR}/scripts/check-ui-tokens.ps1" -Root "${CMAKE_SOURCE_DIR}")
+             COMMAND Python3::Interpreter "${CMAKE_SOURCE_DIR}/scripts/check-ui-tokens.py" --root "${CMAKE_SOURCE_DIR}")
     # No thread is ever killed (docs/decisions.md).
     add_test(NAME src_never_kills_a_thread
-             COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_SOURCE_DIR}/scripts/check-thread-stops.ps1" -Root "${CMAKE_SOURCE_DIR}")
+             COMMAND Python3::Interpreter "${CMAKE_SOURCE_DIR}/scripts/check-thread-stops.py" --root "${CMAKE_SOURCE_DIR}")
+else()
+    message(WARNING "Northlight: no Python 3 found, so ctest skips the literal-colour and thread-stop checks")
 endif()
 add_subdirectory(unit_juce)
 

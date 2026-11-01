@@ -8,12 +8,14 @@ using namespace northlight;
 
 namespace
 {
+#if defined(_MSC_VER) // only MSVC builds contain a crash
 int* volatile nowhere = nullptr;
 
 void writeThroughNull(void*)
 {
     *nowhere = 1; // an access violation, as a broken plugin would raise
 }
+#endif
 
 void doNothing(void* context)
 {

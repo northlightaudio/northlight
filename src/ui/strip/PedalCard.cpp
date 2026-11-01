@@ -483,7 +483,7 @@ private:
     void knobBody(juce::Graphics& g, const PedalKnob& k) const
     {
         const float image = k.skirt * knobImageRatio;
-        if (const auto& body = part("knob-body.png"); body.isValid())
+        if (const auto body = part("knob-body.png"); body.isValid())
         {
             hardware::drawScaled(
                 g,

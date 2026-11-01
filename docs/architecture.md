@@ -91,7 +91,7 @@ that takes: a `juce::Thread` with `stopThread(-1)`, and one-at-a-time background
 (the autosave writer, the file browser's listing) on `engine::BackgroundQueue`,
 whose destructor drops what has not started, waits for the running job and joins.
 JUCE's own time limits kill a thread that misses them, and a thread killed while
-it holds a lock leaves it held for ever; `scripts/check-thread-stops.ps1` keeps
+it holds a lock leaves it held for ever; `scripts/check-thread-stops.py` keeps
 them out ([decisions.md](decisions.md)).
 
 ## Model and commands
@@ -670,10 +670,10 @@ blocked the message thread; now the longest stall is one plugin.
   (Windows ending the session, a path that did not ask) leaves a fresh copy, so
   anything left at launch is offered back, and a restored copy stays on disk until
   the project is saved or discarded. Instances share the folder: each holds
-  `<instance>.lock` there open for its lifetime (Windows will not delete a file
-  another process holds open, and a crash closes it), names its copies after itself
-  and records itself as their owner, so another running instance's live copy is
-  never offered or deleted.
+  `<instance>.lock` there for its lifetime (an `InstanceLock`: on Windows the file is
+  held open, which stops anything deleting it; elsewhere it carries an `flock`; a
+  crash frees either), names its copies after itself and records itself as their
+  owner, so another running instance's live copy is never offered or deleted.
 - **Unsaved changes**: everything that replaces or closes the project goes through
   `FileActions::confirmDiscard` (the close-window sheet): New, Close project, Open,
   a recent or dropped file, a file from Explorer, New from template, Restore,
@@ -868,7 +868,7 @@ The specification for every screen is in [design/](design/README.md).
 |---|---|
 | `northlight_unit_tests` | The model and every command's undo and redo, JSON round trips, the tempo map, the engine offline (sample-exact playback, loops, routing, delay compensation, MIDI, recording, streaming, export DSP, pitch editing) under the real-time allocation hook |
 | `northlight_juce_tests` | JUCE-linked code without a device: the audio callback through a fake device, media reading, plugin hosting against a test CLAP, themes, UI components, MIDI files |
-| CTest checks | No literal colours in `src/ui`; formatting |
+| CTest checks | No literal colours in `src/ui`, no thread killed (`scripts/check-*.py`); formatting |
 | Hardware tools | Loopback latency calibration on a real device; an offline recording soak (many inputs for many minutes through the real record path, verified sample-exactly) |
 
 Tests never depend on audio hardware. See [CONTRIBUTING.md](../CONTRIBUTING.md) for

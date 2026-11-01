@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 
 namespace northlight::hosting
@@ -761,7 +762,7 @@ bool HostedClapPlugin::run(
         t.header.type = CLAP_EVENT_TRANSPORT;
         t.flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_BEATS_TIMELINE |
                   CLAP_TRANSPORT_HAS_SECONDS_TIMELINE | CLAP_TRANSPORT_HAS_TIME_SIGNATURE |
-                  (h.playing ? CLAP_TRANSPORT_IS_PLAYING : 0u);
+                  (h.playing ? static_cast<std::uint32_t>(CLAP_TRANSPORT_IS_PLAYING) : 0u);
         t.tempo = h.tempoBpm;
         t.song_pos_beats = static_cast<clap_beattime>(std::llround(h.quarterNotes * CLAP_BEATTIME_FACTOR));
         t.song_pos_seconds = static_cast<clap_sectime>(

@@ -196,7 +196,7 @@ public:
     {
         if (!on_)
             return;
-        if (const auto& lit = part("lamp-lit.png"); lit.isValid())
+        if (const auto lit = part("lamp-lit.png"); lit.isValid())
             hardware::drawScaled(g, lit, getLocalBounds().toFloat());
         else
         {
@@ -235,7 +235,7 @@ private:
     {
         if (artPass())
         {
-            if (const auto& deck = part("deck.jpg"); deck.isValid())
+            if (const auto deck = part("deck.jpg"); deck.isValid())
                 hardware::drawScaled(g, deck, {0.0f, 0.0f, of::width, of::height});
             else
                 paintFlat(g);

@@ -194,7 +194,7 @@ private:
     {
         if (artPass())
         {
-            if (const auto& deck = part("deck.jpg"); deck.isValid())
+            if (const auto deck = part("deck.jpg"); deck.isValid())
                 hardware::drawScaled(g, deck, {0.0f, 0.0f, lf::width, lf::height});
             else
                 paintFlat(g);

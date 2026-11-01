@@ -72,7 +72,7 @@ environment:
 ## A change is done when
 
 1. It builds with no warnings (CI uses `/WX`; JUCE deprecation warnings count).
-2. `ctest` passes. That includes `scripts/check-ui-tokens.ps1`: no literal colours in
+2. `ctest` passes. That includes `scripts/check-ui-tokens.py`: no literal colours in
    `src/ui` outside `Theme.cpp`.
 3. Every changed `.cpp`/`.h` is clang-formatted (`clang-format -i <files>`; CI runs
    `--dry-run --Werror` on all tracked sources).
@@ -113,7 +113,7 @@ environment:
   check `threadShouldExit()` between steps; run background jobs on
   `engine::BackgroundQueue`, not `juce::ThreadPool`. A killed thread can leave
   Windows' loader lock held, and the app then hangs on its next DLL load or on
-  quitting. `scripts/check-thread-stops.ps1` (in `ctest`) enforces it.
+  quitting. `scripts/check-thread-stops.py` (in `ctest`) enforces it.
 - **Errors:** functions that can fail return them (`std::optional`), not throw.
   Exceptions only for truly exceptional failures on non-RT threads.
 - **Naming:** `northlight::` namespaces that mirror `src/`; PascalCase types and

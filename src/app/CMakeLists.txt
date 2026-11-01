@@ -28,6 +28,8 @@ endif()
 add_library(northlight_app_session STATIC
     CrashReports.h
     CrashReports.cpp
+    InstanceLock.h
+    InstanceLock.cpp
     UserSettings.h
     UserSettings.cpp
     ProjectSession.h

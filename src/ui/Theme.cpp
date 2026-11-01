@@ -86,6 +86,36 @@ juce::Typeface::Ptr loadTypeface(const juce::File& file)
         fontData.push_back(std::move(block));
     return typeface;
 }
+
+// The system faces used when a bundled one did not load (the tests run without
+// the assets folder): the Windows faces the design names, elsewhere the
+// platform's own defaults, since a name the system lacks is no face at all.
+juce::String fallbackSans()
+{
+#if JUCE_WINDOWS
+    return "Segoe UI";
+#else
+    return juce::Font::getDefaultSansSerifFontName();
+#endif
+}
+
+juce::String fallbackMono()
+{
+#if JUCE_WINDOWS
+    return "Consolas";
+#else
+    return juce::Font::getDefaultMonospacedFontName();
+#endif
+}
+
+juce::String fallbackSerif()
+{
+#if JUCE_WINDOWS
+    return "Georgia";
+#else
+    return juce::Font::getDefaultSerifFontName();
+#endif
+}
 } // namespace
 
 // ----- derived values ------------------------------------------------------------------------
@@ -138,9 +168,10 @@ int Theme::lineHeight(float size) const
 juce::Font Theme::displayFont(float size, bool italic) const
 {
     const auto& typeface = italic && fonts.displayItalic != nullptr ? fonts.displayItalic : fonts.display;
-    auto options = typeface != nullptr
-                       ? juce::FontOptions(typeface)
-                       : juce::FontOptions("Georgia", size, italic ? juce::Font::italic : juce::Font::plain);
+    auto options =
+        typeface != nullptr
+            ? juce::FontOptions(typeface)
+            : juce::FontOptions(fallbackSerif(), size, italic ? juce::Font::italic : juce::Font::plain);
     return juce::Font(options.withPointHeight(size));
 }
 
@@ -153,7 +184,7 @@ juce::Font Theme::font(Face face, float size, int weight) const
         const auto& typeface = weight >= 700 && fonts.legendBold != nullptr ? fonts.legendBold : fonts.legend;
         if (typeface != nullptr)
             return juce::Font(juce::FontOptions(typeface).withHeight(size));
-        auto options = juce::FontOptions("Segoe UI", size, juce::Font::plain).withHorizontalScale(0.86f);
+        auto options = juce::FontOptions(fallbackSans(), size, juce::Font::plain).withHorizontalScale(0.86f);
         if (weight >= fonts.weight.semibold)
             options = options.withStyle("Bold");
         return juce::Font(options);
@@ -163,7 +194,8 @@ juce::Font Theme::font(Face face, float size, int weight) const
     if (typeface != nullptr)
         options = juce::FontOptions(typeface);
     else
-        options = juce::FontOptions(face == Face::mono ? "Consolas" : "Segoe UI", size, juce::Font::plain);
+        options =
+            juce::FontOptions(face == Face::mono ? fallbackMono() : fallbackSans(), size, juce::Font::plain);
     // The size is the em square, as a size means in CSS and in design tools (a
     // JUCE "height" is the ascent plus the descent, about 1.2 em for Inter, which
     // drew every size a sixth smaller than its token said).
