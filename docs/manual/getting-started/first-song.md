@@ -77,7 +77,7 @@ or an input on your interface.
    your part along with the piano.
 7. Press Space to stop. The recording appears as a clip on the track.
 
-Not happy with it? Press Ctrl+Z and record again. See
+To try again, press Ctrl+Z and record the part again. See
 [Recording audio](../recording/recording-audio.md) and
 [Inputs](../recording/inputs.md).
 

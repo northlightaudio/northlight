@@ -5,7 +5,7 @@ sidebar:
   order: 2
 ---
 
-**Correct** tunes many notes in one pass. It is a suggestion, not a snap: each note
+**Correct** tunes many notes in one pass. It does not snap them to pitch: each note
 is moved most of the way towards a sensible note of the key, its vibrato and its
 slides are kept, and the result is an ordinary set of note edits that you can adjust
 one by one afterwards. Used gently, it tidies a take without making it sound

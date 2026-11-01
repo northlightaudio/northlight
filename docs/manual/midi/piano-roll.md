@@ -106,7 +106,7 @@ playhead when the playhead is inside the clip, and otherwise where the pointer l
 was on the grid, snapped. The pasted notes are selected, ready to move. The
 clipboard is shared by every piano roll, so you can copy notes from one clip and
 paste them into another. Ctrl+D duplicates the selection straight after itself,
-rounded to whole grid steps, which is the quickest way to repeat a phrase.
+rounded to whole grid steps, so you can repeat a phrase with one shortcut.
 
 ## The grid
 

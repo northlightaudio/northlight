@@ -5,10 +5,9 @@ sidebar:
   order: 5
 ---
 
-Recording is the one time you can't do it again: the performance happened once.
-Northlight writes every take to disk as it goes, so that whatever goes wrong, as much
-of it as possible is kept. This page explains what you see, and what to do, when a
-take is interrupted.
+A performance can't be played again exactly, so Northlight writes every take to disk
+as it goes: whatever goes wrong, as much of it as possible is kept. This page explains
+what you see, and what to do, when a take is interrupted.
 
 ## If Northlight closes during a take
 

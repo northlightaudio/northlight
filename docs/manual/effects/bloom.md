@@ -31,7 +31,7 @@ long decay fills the whole flower; a gated one leaves gaps.
 - **The rim** shows the tail's level as a coloured band, with the dry sound's level as
   small ticks outside it. When the tail is loud against the dry sound, the band is
   thick.
-- **Spirals** appear when Shimmer is on, climbing outward (or inward for -12) to show
+- **Spirals** appear when Shimmer is on, climbing outward (or inward for −12) to show
   the tail rising in pitch.
 - **The corners** read out the settings: **DECAY** at the top left with the decay time
   and how long the highs last ("2.7 s at 8 kHz"); **SPACE** at the top right with the

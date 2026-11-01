@@ -74,8 +74,8 @@ plays nothing shows a **+ Instrument** slot there instead.
 ## The Instruments panel
 
 The Instruments panel (F8) is the rack: one unit for every instrument channel in
-the project, in track order. It is the quickest way to see which instruments a song
-uses, who plays each one, and where their outputs go.
+the project, in track order. It shows which instruments a song uses, who plays each
+one, and where their outputs go.
 
 ![The Instruments panel: a list of units, each with a power button, the instrument's name and a BUILT-IN badge, the MIDI tracks that play it, a row of output chips and an Edit button, with a + Instrument button below them](../images/instruments-panel.webp)
 

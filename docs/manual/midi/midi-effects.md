@@ -167,7 +167,7 @@ each one is played fresh by the instrument rather than being a copy of its sound
 
 ## Scale
 
-Keeps every note in a key, so a wrong note becomes a right one. Use it to play
+Keeps every note in a key by moving or dropping notes outside it. Use it to play
 freely over a song without hitting notes that clash, or to correct a part played in
 from a keyboard.
 

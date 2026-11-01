@@ -23,7 +23,7 @@ Knobs drag up or down (Shift for fine), take the mouse wheel, and reset with a d
 
 ## Spectrum
 
-The display is the centrepiece: each partial is a column of light on a frequency scale from 55 Hz to 12 kHz, with the halo's partials in their own colour, under a soft cloud that marks the formant. The columns sway as the motion moves them. Drag across the display to move the vowel, and up and down to change the brightness. The chip in its corner sets the **Octave** (−2 to +2).
+The display draws each partial as a column of light on a frequency scale from 55 Hz to 12 kHz, with the halo's partials in their own colour, under a soft cloud that marks the formant. The columns sway as the motion moves them. Drag across the display to move the vowel, and up and down to change the brightness. The chip in its corner sets the **Octave** (−2 to +2).
 
 | Control | What it does |
 |---|---|

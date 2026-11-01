@@ -9,8 +9,8 @@ Every effect that comes with Northlight has presets: named settings you can load
 a click, step through while the song plays, and add to with your own. They work the
 same way in every built-in effect, so this page covers them once.
 
-A preset is a starting point, not a finished answer. Load one that sounds close, then
-adjust it to the track in front of you.
+Treat a preset as a starting point: load one that sounds close, then adjust it to the
+track in front of you.
 
 ## The preset bar
 
