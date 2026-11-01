@@ -72,6 +72,16 @@
       "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
     },
     {
+      "name": "linux-package",
+      "displayName": "Linux package (Release, static C++ runtime; scripts/package-linux.sh)",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "NORTHLIGHT_RT_CHECKS": "OFF",
+        "NORTHLIGHT_STATIC_RUNTIME": "ON"
+      }
+    },
+    {
       "name": "linux-ci",
       "displayName": "Linux CI (RelWithDebInfo, warnings as errors)",
       "inherits": "linux-base",
@@ -89,7 +99,8 @@
     { "name": "ci", "configurePreset": "ci" },
     { "name": "linux-debug", "configurePreset": "linux-debug" },
     { "name": "linux-relwithdebinfo", "configurePreset": "linux-relwithdebinfo" },
-    { "name": "linux-ci", "configurePreset": "linux-ci" }
+    { "name": "linux-ci", "configurePreset": "linux-ci" },
+    { "name": "linux-package", "configurePreset": "linux-package" }
   ],
   "testPresets": [
     { "name": "windows-debug", "configurePreset": "windows-debug", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } },
@@ -99,6 +110,7 @@
     { "name": "ci", "configurePreset": "ci", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } },
     { "name": "linux-debug", "configurePreset": "linux-debug", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } },
     { "name": "linux-relwithdebinfo", "configurePreset": "linux-relwithdebinfo", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } },
-    { "name": "linux-ci", "configurePreset": "linux-ci", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } }
+    { "name": "linux-ci", "configurePreset": "linux-ci", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } },
+    { "name": "linux-package", "configurePreset": "linux-package", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } }
   ]
 }

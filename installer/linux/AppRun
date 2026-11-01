@@ -1,0 +1,6 @@
+#!/bin/sh
+# The AppImage's entry point. The app folder (Northlight, the plugin scanner and the
+# assets beside them) is kept whole under usr/lib/northlight, since the app finds
+# its assets and the scanner next to its own executable.
+here="$(dirname "$(readlink -f "$0")")"
+exec "$here/usr/lib/northlight/Northlight" "$@"

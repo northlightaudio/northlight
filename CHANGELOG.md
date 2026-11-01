@@ -9,6 +9,13 @@ release is made, the Unreleased section becomes that release.
 
 ## Unreleased
 
+### Added
+
+- A Linux download, as an experimental AppImage: make it executable and run it.
+  It plays through JACK or PipeWire when one is running and ALSA otherwise. CLAP
+  plugin windows, crash reports and a crashing plugin's containment are still
+  Windows only.
+
 ## 0.1.0-beta.1 - 2026-11-01
 
 The first public release, a beta. It is not code-signed yet, so Windows SmartScreen

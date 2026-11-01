@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Northlight
+GenericName=Digital Audio Workstation
+Comment=Record, edit and mix music
+Exec=northlight %f
+Icon=org.northlightaudio.northlight
+Terminal=false
+Categories=AudioVideo;Audio;Recorder;Midi;Sequencer;
+MimeType=application/x-northlight-project;
+Keywords=DAW;music;audio;recording;mixing;MIDI;

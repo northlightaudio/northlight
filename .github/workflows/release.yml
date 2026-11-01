@@ -1,8 +1,9 @@
 name: Release
 
-# A tag vX.Y.Z (or vX.Y.Z-beta.N) builds the portable zip and the installer with
-# scripts/package.ps1 and attaches them to a draft GitHub release. Running the
-# workflow by hand builds a dev package and keeps it as a workflow artifact.
+# A tag vX.Y.Z (or vX.Y.Z-beta.N) builds the Windows portable zip and installer
+# (scripts/package.ps1) and the Linux AppImage (scripts/package-linux.sh), and
+# attaches them to a draft GitHub release with one SHA256SUMS.txt. Running the
+# workflow by hand builds dev packages and keeps them as workflow artifacts.
 #
 # Signing is off until the repository variable NORTHLIGHT_SIGNING is 'true'. It
 # then also needs (docs/building.md, "Signing"):
@@ -24,13 +25,19 @@ concurrency:
 env:
   INNO_SETUP_URL: https://github.com/jrsoftware/issrc/releases/download/is-6_7_4/innosetup-6.7.4.exe
   INNO_SETUP_SHA256: A549929319F9120716677C685535CA4671E4B937B5FDC87E2585F32D8EB30E8C
+  APPIMAGETOOL_URL: https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+  APPIMAGETOOL_SHA256: ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+  APPIMAGE_RUNTIME_URL: https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
+  APPIMAGE_RUNTIME_SHA256: 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
   SIGN: ${{ vars.NORTHLIGHT_SIGNING == 'true' }}
 
 jobs:
-  package:
-    name: Package for Windows x64
-    runs-on: windows-latest
-    timeout-minutes: 90
+  version:
+    name: Work out the version
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.version.outputs.label }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
 
     steps:
       - uses: actions/checkout@v7
@@ -52,6 +59,15 @@ jobs:
           }
           "label=$label" >> $env:GITHUB_OUTPUT
           "prerelease=$([bool]$label)".ToLower() >> $env:GITHUB_OUTPUT
+
+  package:
+    name: Package for Windows x64
+    needs: version
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v7
 
       - name: Cache fetched dependencies
         uses: actions/cache@v6
@@ -96,7 +112,7 @@ jobs:
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         run: |
           $sign = $env:SIGN -eq 'true'
-          .\scripts\package.ps1 -Label '${{ steps.version.outputs.label }}' -Sign:$sign -InnoSetup $env:ISCC
+          .\scripts\package.ps1 -Label '${{ needs.version.outputs.label }}' -Sign:$sign -InnoSetup $env:ISCC
 
       - name: Keep the package
         uses: actions/upload-artifact@v7
@@ -105,14 +121,96 @@ jobs:
           path: build/package/dist/*
           if-no-files-found: error
 
-      - name: Draft the GitHub release
-        if: github.ref_type == 'tag'
-        shell: pwsh
+  # Built in an Ubuntu 22.04 container: an AppImage runs on systems with the same
+  # or a newer glibc than the one it was built on, and 22.04's (2.35) covers the
+  # distributions still in support. Its own GCC is too old for the code, so GCC 13
+  # comes from the toolchain PPA; the C++ runtime is linked in (linux-package
+  # preset), so the newer libstdc++ is not needed where it runs.
+  package-linux:
+    name: Package for Linux x86_64
+    needs: version
+    runs-on: ubuntu-latest
+    container: ubuntu:22.04
+    timeout-minutes: 120
+    env:
+      CC: gcc-13
+      CXX: g++-13
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      # git first, so checkout makes a real clone (the package names its commit).
+      - name: Install packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends software-properties-common gpg-agent ca-certificates git curl
+          add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            g++-13 python3 python3-pip file binutils \
+            libasound2-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev \
+            libxrender-dev libxcomposite-dev libgl1-mesa-dev libjack-jackd2-dev \
+            fonts-dejavu-core xvfb xauth
+          # 22.04's CMake is older than the 3.28 the project needs.
+          python3 -m pip install --no-cache-dir cmake==3.31.6 ninja==1.11.1.4
+
+      - uses: actions/checkout@v7
+
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Download appimagetool and the AppImage runtime
+        run: |
+          tools="$RUNNER_TEMP/appimage"
+          mkdir -p "$tools"
+          curl -sSfL -o "$tools/appimagetool" "$APPIMAGETOOL_URL"
+          curl -sSfL -o "$tools/runtime" "$APPIMAGE_RUNTIME_URL"
+          echo "$APPIMAGETOOL_SHA256  $tools/appimagetool" | sha256sum -c -
+          echo "$APPIMAGE_RUNTIME_SHA256  $tools/runtime" | sha256sum -c -
+          chmod +x "$tools/appimagetool"
+          echo "NORTHLIGHT_APPIMAGETOOL=$tools/appimagetool" >> "$GITHUB_ENV"
+          echo "NORTHLIGHT_APPIMAGE_RUNTIME=$tools/runtime" >> "$GITHUB_ENV"
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/linux-package/_deps
+          key: deps-linux-package-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Build, test and package
+        run: sh scripts/package-linux.sh --label '${{ needs.version.outputs.label }}'
+
+      - name: Keep the package
+        uses: actions/upload-artifact@v7
+        with:
+          name: northlight-linux-x86_64
+          path: build/linux-package/dist/*
+          if-no-files-found: error
+
+  release:
+    name: Draft the GitHub release
+    if: github.ref_type == 'tag'
+    needs: [version, package, package-linux]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Collect the packages
+        uses: actions/download-artifact@v7
+        with:
+          path: packages
+
+      # One SHA256SUMS.txt for every file, in the format `sha256sum -c` reads.
+      - name: Gather the files and their checksums
+        run: |
+          mkdir dist
+          find packages -type f ! -name SHA256SUMS.txt -exec mv {} dist/ \;
+          (cd dist && sha256sum * | sort -k2 > SHA256SUMS.txt)
+          cat dist/SHA256SUMS.txt
+
+      - name: Draft the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $files = Get-ChildItem build/package/dist -File | ForEach-Object { $_.FullName }
-          $flags = @('--draft', '--verify-tag', '--title', 'Northlight ${{ github.ref_name }}', '--notes', 'See CHANGELOG.md for what changed.')
-          if ('${{ steps.version.outputs.prerelease }}' -eq 'true') { $flags += '--prerelease' }
-          gh release create '${{ github.ref_name }}' @flags @files
-          if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
+          flags="--draft --verify-tag --title 'Northlight ${{ github.ref_name }}' --notes 'See CHANGELOG.md for what changed.'"
+          if [ '${{ needs.version.outputs.prerelease }}' = true ]; then flags="$flags --prerelease"; fi
+          eval gh release create '${{ github.ref_name }}' --repo '${{ github.repository }}' $flags dist/*

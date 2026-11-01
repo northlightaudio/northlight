@@ -50,6 +50,7 @@ ctest --preset windows-debug
 | `ci` | RelWithDebInfo | Warnings as errors |
 | `linux-debug`, `linux-relwithdebinfo` | Debug, RelWithDebInfo | Linux (experimental, see [Linux](#linux-experimental)) |
 | `linux-ci` | RelWithDebInfo | Linux, warnings as errors |
+| `linux-package` | Release | Linux, static C++ runtime; built by `scripts/package-linux.sh` |
 
 The application is `build/<preset>/src/app/northlight_artefacts/<config>/Northlight.exe`.
 The build copies the design tokens, fonts, icons, brand files, the licence and the
@@ -120,7 +121,6 @@ What is missing on Linux:
   plugin takes the app down. Scanning still runs in a separate process.
 - Crash reports (minidumps) and the "reduce motion" and high-contrast system
   settings are Windows only.
-- No installer or package; `scripts/package.ps1` makes the Windows ones only.
 
 ## Options
 
@@ -133,6 +133,7 @@ What is missing on Linux:
 | `NORTHLIGHT_ASIO` | ON | ASIO audio devices (Windows only) |
 | `NORTHLIGHT_ASIO_SDK_DIR` | empty | Optional: an ASIO SDK root whose header replaces the one bundled with JUCE |
 | `NORTHLIGHT_VERSION_LABEL` | `dev` | The version's label: `dev`, a pre-release such as `beta.1`, or empty for a release (see [CONTRIBUTING.md](../CONTRIBUTING.md#versions-and-releases)) |
+| `NORTHLIGHT_STATIC_RUNTIME` | OFF (ON in `linux-package`) | Link the C++ runtime into each executable (GCC and Clang) |
 | `NORTHLIGHT_PCH` | ON (OFF in CI) | Precompile the standard, JUCE and Catch2 headers (see [Build speed](#build-speed)) |
 | `NORTHLIGHT_COMPILER_CACHE` | OFF (ON in CI) | Compile through sccache, which must be on PATH (see [Build speed](#build-speed)) |
 
@@ -218,6 +219,41 @@ otherwise the one on PATH or in the usual install folders. The installer:
   nothing a newer version dropped lingers;
 - leaves settings, plugin lists and recordings when uninstalled.
 
+### Linux AppImage
+
+`scripts/package-linux.sh` makes the Linux download, an AppImage: one file to make
+executable and run, with nothing to install.
+
+```bash
+scripts/package-linux.sh                          # a dev package
+scripts/package-linux.sh --label ''               # a final release (clean tree, at the tag)
+scripts/package-linux.sh --low-priority --jobs 4  # while the machine is in use
+```
+
+It builds the `linux-package` preset (Release, the C++ runtime linked in with
+`-static-libstdc++ -static-libgcc`) in `build/linux-package`, runs the tests as
+`package.ps1` does (under `xvfb-run` when there is no display), stages an AppDir and
+writes `Northlight-<version>-x86_64.AppImage` and `SHA256SUMS.txt` to
+`build/linux-package/dist`. `--skip-build` and `--skip-tests` work as their
+`package.ps1` counterparts.
+
+The AppDir keeps the app folder whole under `usr/lib/northlight` (the app finds its
+assets and the plugin scanner beside itself), with `AppRun`, the desktop entry, the
+`.northlight` MIME type, AppStream metadata and the icons from
+[installer/linux](../installer/linux). Nothing else is bundled: the app needs only
+glibc, ALSA, fontconfig and FreeType from the system, the libraries AppImages take
+from the host, and it loads X11, libjack and libdbus itself when it runs.
+
+An AppImage runs where glibc is the same as or newer than where it was built, and
+the script prints that version. A package built on a current distribution runs only
+on others as new, so releases are built in an Ubuntu 22.04 container (glibc 2.35).
+
+It needs `appimagetool` and the AppImage type-2 runtime: the files that
+`NORTHLIGHT_APPIMAGETOOL` and `NORTHLIGHT_APPIMAGE_RUNTIME` name, else
+`appimagetool` on PATH, which then downloads the newest runtime itself.
+`release.yml` pins both by version and checksum. Running an AppImage needs FUSE;
+without it (in a container or WSL) set `APPIMAGE_EXTRACT_AND_RUN=1`.
+
 ### Signing
 
 Signing uses [Azure Trusted Signing](https://learn.microsoft.com/azure/trusted-signing/)
@@ -248,10 +284,11 @@ and checks each signature. It needs:
 ### Releases from GitHub
 
 Pushing a tag `vX.Y.Z` or `vX.Y.Z-beta.N` runs `.github/workflows/release.yml`: it
-checks the tag against the version in `CMakeLists.txt`, runs `package.ps1` with the
-tag's label and attaches the zip, installer and checksums to a **draft** release to
-be reviewed and published by hand. Running the workflow by hand makes a dev package
-and keeps it as a workflow artifact.
+checks the tag against the version in `CMakeLists.txt`, runs `package.ps1` and
+`package-linux.sh` with the tag's label, and attaches the zip, installer, AppImage
+and one `SHA256SUMS.txt` for all three to a **draft** release to be reviewed and
+published by hand. Running the workflow by hand makes dev packages and keeps them
+as workflow artifacts.
 
 The workflow signs once the repository variable `NORTHLIGHT_SIGNING` is `true`. It
 then reads the account from the variables `TRUSTED_SIGNING_ENDPOINT`,
