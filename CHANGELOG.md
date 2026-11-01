@@ -9,7 +9,11 @@ release is made, the Unreleased section becomes that release.
 
 ## Unreleased
 
-Northlight has not had a release yet. The first release, 0.1.0, will include:
+## 0.1.0-beta.1 - 2026-11-01
+
+The first public release, a beta. It is not code-signed yet, so Windows SmartScreen
+warns that the publisher is unknown the first time the installer or the portable
+app runs; the release lists checksums to check the download against.
 
 ### Added
 

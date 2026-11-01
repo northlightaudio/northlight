@@ -8,8 +8,10 @@ interface designed before it was built. Free software under the GNU AGPLv3.
 
 ![Northlight with a song open: the arrange view, the Pulsar drum synth in the Editor panel, and the inspector](docs/images/northlight.png)
 
-**Status:** in active development, with no release yet. See the
-[roadmap](docs/roadmap.md) for where it stands.
+**Status:** in beta. Download the installer or the portable zip from
+[Releases](https://github.com/northlightaudio/northlight/releases); see the
+[changelog](CHANGELOG.md) for what is in it and the [roadmap](docs/roadmap.md) for
+where it stands.
 
 ## What it does
 

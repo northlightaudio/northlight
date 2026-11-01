@@ -24,8 +24,8 @@ direction.
 
 ## Where it stands
 
-Northlight is in active development and has not had a release. The core of a working
-DAW is in place:
+Northlight is in beta: 0.1.0-beta.1 (November 2026) is its first public release. The
+core of a working DAW is in place:
 
 - **Audio:** ASIO and Windows Audio devices, with loopback latency calibration.
 - **Recording:** multitrack recording from mono and stereo inputs with crash
@@ -48,8 +48,6 @@ DAW is in place:
   RME, Universal Audio, Steinberg, ASIO4ALL, FlexASIO), and a performance regression
   suite in CI.
 - **A minimum hardware specification**, to set the performance budget against.
-- **An installer** that ships the licence and third-party notices with the
-  application.
 - **Vocal pitch editing checked by ear** on real vocal recordings; so far it is
   verified with synthetic voices.
 - **Design polish.** The October 2026 review left smaller alignment and grouping
