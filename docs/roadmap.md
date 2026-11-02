@@ -17,17 +17,21 @@ direction.
 
 ## Not goals for the first release
 
-- macOS and Linux. The platform-specific parts sit behind a seam so a port stays
-  possible, but the first release is Windows only.
+- macOS, and full Linux support. The platform-specific parts sit behind a seam so
+  a port stays possible. Since 0.1.0-beta.2 there is an experimental Linux
+  AppImage, but CLAP plugin windows, crash reports and plugin crash containment
+  are still Windows only.
 - Video, notation, cloud collaboration.
 - VST2, AAX and AU hosting.
 
 ## Where it stands
 
-Northlight is in beta: 0.1.0-beta.1 (November 2026) is its first public release. The
-core of a working DAW is in place:
+Northlight is in beta: 0.1.0-beta.1 (November 2026) was its first public release,
+and 0.1.0-beta.2 added an experimental Linux build. The core of a working DAW is in
+place:
 
-- **Audio:** ASIO and Windows Audio devices, with loopback latency calibration.
+- **Audio:** ASIO and Windows Audio devices (JACK and ALSA on Linux), with loopback
+  latency calibration.
 - **Recording:** multitrack recording from mono and stereo inputs with crash
   recovery, and loop and punch recording into take lanes with comping.
 - **Mixing:** a mixer with buses, FX tracks, sends, fader groups and delay

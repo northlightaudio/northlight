@@ -9,6 +9,11 @@ release is made, the Unreleased section becomes that release.
 
 ## Unreleased
 
+## 0.1.0-beta.2 - 2026-11-02
+
+The second beta adds a Linux build. Windows users get nothing new beyond the
+first beta's features.
+
 ### Added
 
 - A Linux download, as an experimental AppImage: make it executable and run it.
